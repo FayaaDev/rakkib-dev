@@ -694,6 +694,9 @@ services:
       template: dashy-public.caddy.tmpl
     data_dirs:
       - data/dashy
+    extra_templates:
+      - src: templates/docker/dashy/conf.yml.tmpl
+        dst: data/dashy/conf.yml
     chown:
       uid: 1000
       gid: 1000
@@ -713,4 +716,4 @@ services:
     smoke:
       path: /
       expected_text: Dashy
-    notes: "Highly customisable dashboard. Optional. Boots with a built-in demo config; drop a custom conf.yml into data/dashy/ to override."
+    notes: "Highly customisable dashboard. Optional. conf.yml is seeded via extra_templates on every deploy; edit data/dashy/conf.yml to customise."
