@@ -70,6 +70,7 @@ Duplicates already listed in **Batch 1** are removed here.
 - [x] Planning Poker (A)
 - [ ] Code Server (B)
 - [ ] Atuin Server (C)
+- [x] Hermes Agent (E)
 
 ### Books And Reading
 - [ ] openbooks (B)
