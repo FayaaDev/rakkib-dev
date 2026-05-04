@@ -137,6 +137,21 @@ service_catalog:
       numeric_alias: 26
       subdomain_key: whoogle
       default_subdomain: whoogle
+    - slug: forgejo
+      label: Forgejo
+      numeric_alias: 27
+      subdomain_key: forgejo
+      default_subdomain: forgejo
+    - slug: privatebin
+      label: PrivateBin
+      numeric_alias: 28
+      subdomain_key: privatebin
+      default_subdomain: privatebin
+    - slug: stirling-pdf
+      label: Stirling-PDF
+      numeric_alias: 29
+      subdomain_key: stirling-pdf
+      default_subdomain: pdf
   host_addons:
     - slug: vergo_terminal
       label: VErgo Terminal
@@ -158,7 +173,7 @@ fields:
     type: multi_select
     selection_mode: add_to_empty
     prompt: "Service categories: type service slugs to add (e.g. `n8n immich filebrowser`); numeric aliases like `6 8 12` are also accepted, or press Enter to skip all:"
-    canonical_values: [n8n, immich, transfer, jellyfin, openclaw, filebrowser, it-tools, cyberchef, drawio, excalidraw, homer, dozzle, glance, dashy, beszel, freshrss, actual-budget, rsshub, vaultwarden, whoogle]
+    canonical_values: [n8n, immich, transfer, jellyfin, openclaw, filebrowser, it-tools, cyberchef, drawio, excalidraw, homer, dozzle, glance, dashy, beszel, freshrss, actual-budget, rsshub, vaultwarden, whoogle, forgejo, privatebin, stirling-pdf]
     numeric_aliases:
       "6": n8n
       "7": immich
@@ -180,6 +195,9 @@ fields:
       "24": rsshub
       "25": vaultwarden
       "26": whoogle
+      "27": forgejo
+      "28": privatebin
+      "29": stirling-pdf
     records:
       - selected_services
   - id: host_addons
@@ -254,6 +272,7 @@ AI:
 Developer Tools:
   [ ] 13 IT-Tools      — browser utilities      →  tools.<domain>
   [ ] 14 CyberChef     — data transformation    →  cyberchef.<domain>
+  [ ] 27 Forgejo       — self-hosted git forge  →  forgejo.<domain>
   [ ] 24 RSSHub        — RSS generator          →  rsshub.<domain>
 
 Diagram And Design:
@@ -354,6 +373,7 @@ subdomains:
   filebrowser: files
   it-tools: tools
   cyberchef: cyberchef
+  forgejo: forgejo
   drawio: drawio
   excalidraw: excalidraw
   homer: homer
@@ -385,6 +405,7 @@ During rendering, flatten these values into service placeholders:
 - `subdomains.filebrowser` -> `{{FILEBROWSER_SUBDOMAIN}}`
 - `subdomains.it-tools` -> `{{IT_TOOLS_SUBDOMAIN}}`
 - `subdomains.cyberchef` -> `{{CYBERCHEF_SUBDOMAIN}}`
+- `subdomains.forgejo` -> `{{FORGEJO_SUBDOMAIN}}`
 - `subdomains.drawio` -> `{{DRAWIO_SUBDOMAIN}}`
 - `subdomains.excalidraw` -> `{{EXCALIDRAW_SUBDOMAIN}}`
 - `subdomains.homer` -> `{{HOMER_SUBDOMAIN}}`

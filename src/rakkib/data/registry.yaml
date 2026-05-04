@@ -464,6 +464,57 @@ services:
       expected_text: CyberChef
     notes: "Static data transformation toolkit. Optional."
 
+  - id: forgejo
+    state_bucket: selected_services
+    required: false
+    optional: true
+    image: codeberg.org/forgejo/forgejo:15
+    default_port: 3000
+    default_subdomain: forgejo
+    subdomain_key: forgejo
+    subdomain_placeholder: FORGEJO_SUBDOMAIN
+    env_keys:
+      - FORGEJO_DB_PASS
+    depends_on: [postgres]
+    host_service: false
+    host_port: false
+    caddy:
+      template: forgejo-public.caddy.tmpl
+    data_dirs:
+      - data/forgejo
+    chown:
+      uid: 1000
+      gid: 1000
+    secrets:
+      FORGEJO_DB_PASS:
+        factory: password
+        length: 32
+    postgres:
+      role: forgejo
+      db: forgejo_db
+      password_key: FORGEJO_DB_PASS
+      display_name: Forgejo
+    homepage:
+      category: Developer Tools
+      name: Forgejo
+      description: Self-hosted Git forge
+      icon: forgejo.png
+    monitoring:
+      enabled: true
+      type: http
+      target: public_url
+      path: /
+      interval: 60
+      timeout: 10
+      retries: 3
+    smoke:
+      path: /
+      expected_text: Forgejo
+    notes: "Self-hosted Git service (Forgejo). Optional. Uses shared PostgreSQL. Git-over-HTTPS supported; SSH is not exposed by default in Rakkib."
+    hooks:
+      pre_start:
+        - service_postgres_login_preflight
+
   - id: drawio
     state_bucket: selected_services
     required: false
@@ -912,3 +963,155 @@ services:
       path: /
       expected_text: Whoogle Search
     notes: "Privacy-respecting metasearch engine. Optional. Stores container /config under the Rakkib data root."
+
+  - id: stirling-pdf
+    state_bucket: selected_services
+    required: false
+    optional: true
+    image: docker.stirlingpdf.com/stirlingtools/stirling-pdf:latest
+    default_port: 8080
+    default_subdomain: pdf
+    subdomain_key: stirling-pdf
+    subdomain_placeholder: STIRLING_PDF_SUBDOMAIN
+    env_keys: []
+    depends_on: []
+    host_service: false
+    host_port: false
+    caddy:
+      template: stirling-pdf-public.caddy.tmpl
+    data_dirs:
+      - data/stirling-pdf/tessdata
+      - data/stirling-pdf/config
+      - data/stirling-pdf/logs
+    homepage:
+      category: Documents
+      name: Stirling-PDF
+      description: Self-hosted PDF toolkit
+      icon: stirling-pdf.png
+    monitoring:
+      enabled: true
+      type: http
+      target: public_url
+      path: /
+      interval: 60
+      timeout: 10
+      retries: 3
+    smoke:
+      path: /
+      expected_text: Stirling
+    notes: "Browser-based PDF toolbox. Optional. Consider restricting access; uploaded documents are processed server-side."
+
+  - id: mealie
+    state_bucket: selected_services
+    required: false
+    optional: true
+    image: ghcr.io/mealie-recipes/mealie:latest
+    default_port: 9000
+    default_subdomain: mealie
+    subdomain_key: mealie
+    subdomain_placeholder: MEALIE_SUBDOMAIN
+    env_keys: []
+    depends_on: []
+    host_service: false
+    host_port: false
+    caddy:
+      template: mealie-public.caddy.tmpl
+    data_dirs:
+      - data/mealie/data
+    homepage:
+      category: Lifestyle
+      name: Mealie
+      description: Recipe manager and meal planner
+      icon: mealie.png
+    monitoring:
+      enabled: true
+      type: http
+      target: public_url
+      path: /
+      interval: 60
+      timeout: 10
+      retries: 3
+    smoke:
+      path: /
+      expected_text: Mealie
+      timeout: 120
+    notes: "Recipe manager. Optional. Stores its SQLite database and uploads under data/mealie/data."
+
+  - id: gitea
+    state_bucket: selected_services
+    required: false
+    optional: true
+    image: gitea/gitea:latest
+    default_port: 3000
+    default_subdomain: gitea
+    subdomain_key: gitea
+    subdomain_placeholder: GITEA_SUBDOMAIN
+    env_keys:
+      - GITEA_DB_PASS
+    depends_on: [postgres]
+    host_service: false
+    host_port: false
+    caddy:
+      template: gitea-public.caddy.tmpl
+    data_dirs:
+      - data/gitea
+    chown:
+      uid: 1000
+      gid: 1000
+    secrets:
+      GITEA_DB_PASS:
+        factory: password
+    postgres:
+      role: gitea
+      db: gitea_db
+      password_key: GITEA_DB_PASS
+      display_name: Gitea
+    monitoring:
+      enabled: true
+      type: http
+      target: public_url
+      path: /
+      interval: 60
+      timeout: 10
+      retries: 3
+    smoke:
+      path: /
+      expected_text: Gitea
+    notes: "Self-hosted Git service (Gitea). Optional. HTTP(S) only by default (no SSH port exposed); clone/push over HTTPS or extend compose if SSH is required."
+    hooks:
+      pre_start:
+        - service_postgres_login_preflight
+
+  - id: privatebin
+    state_bucket: selected_services
+    required: false
+    optional: true
+    image: privatebin/nginx-fpm-alpine:stable
+    default_port: 8080
+    default_subdomain: privatebin
+    subdomain_key: privatebin
+    subdomain_placeholder: PRIVATEBIN_SUBDOMAIN
+    env_keys: []
+    depends_on: []
+    host_service: false
+    host_port: false
+    caddy:
+      template: privatebin-public.caddy.tmpl
+    data_dirs:
+      - data/privatebin
+    # Upstream image expects /srv/data to be owned by UID 65534 / GID 82.
+    chown:
+      uid: 65534
+      gid: 82
+    monitoring:
+      enabled: true
+      type: http
+      target: public_url
+      path: /
+      interval: 60
+      timeout: 10
+      retries: 3
+    smoke:
+      path: /
+      expected_text: PrivateBin
+    notes: "Encrypted pastebin (PrivateBin). Optional. Uses privatebin/nginx-fpm-alpine with filesystem storage persisted under /srv/data."

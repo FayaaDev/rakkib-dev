@@ -106,6 +106,19 @@ def test_phase_3_service_catalog_and_rules():
         "cyberchef",
         "drawio",
         "excalidraw",
+        "homer",
+        "dozzle",
+        "glance",
+        "dashy",
+        "beszel",
+        "freshrss",
+        "actual-budget",
+        "rsshub",
+        "vaultwarden",
+        "whoogle",
+        "forgejo",
+        "privatebin",
+        "stirling-pdf",
     ]
 
     assert len(schema.rules) == 1
