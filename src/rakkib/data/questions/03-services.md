@@ -137,6 +137,31 @@ service_catalog:
       numeric_alias: 26
       subdomain_key: whoogle
       default_subdomain: whoogle
+    - slug: forgejo
+      label: Forgejo
+      numeric_alias: 27
+      subdomain_key: forgejo
+      default_subdomain: forgejo
+    - slug: privatebin
+      label: PrivateBin
+      numeric_alias: 28
+      subdomain_key: privatebin
+      default_subdomain: privatebin
+    - slug: stirling-pdf
+      label: Stirling-PDF
+      numeric_alias: 29
+      subdomain_key: stirling-pdf
+      default_subdomain: pdf
+    - slug: mealie
+      label: Mealie
+      numeric_alias: 30
+      subdomain_key: mealie
+      default_subdomain: mealie
+    - slug: gitea
+      label: Gitea
+      numeric_alias: 31
+      subdomain_key: gitea
+      default_subdomain: gitea
   host_addons:
     - slug: vergo_terminal
       label: VErgo Terminal
@@ -158,7 +183,7 @@ fields:
     type: multi_select
     selection_mode: add_to_empty
     prompt: "Service categories: type service slugs to add (e.g. `n8n immich filebrowser`); numeric aliases like `6 8 12` are also accepted, or press Enter to skip all:"
-    canonical_values: [n8n, immich, transfer, jellyfin, openclaw, filebrowser, it-tools, cyberchef, drawio, excalidraw, homer, dozzle, glance, dashy, beszel, freshrss, actual-budget, rsshub, vaultwarden, whoogle]
+    canonical_values: [n8n, immich, transfer, jellyfin, openclaw, filebrowser, it-tools, cyberchef, drawio, excalidraw, homer, dozzle, glance, dashy, beszel, freshrss, actual-budget, rsshub, vaultwarden, whoogle, forgejo, privatebin, stirling-pdf, mealie, gitea]
     numeric_aliases:
       "6": n8n
       "7": immich
@@ -180,6 +205,11 @@ fields:
       "24": rsshub
       "25": vaultwarden
       "26": whoogle
+      "27": forgejo
+      "28": privatebin
+      "29": stirling-pdf
+      "30": mealie
+      "31": gitea
     records:
       - selected_services
   - id: host_addons
@@ -254,6 +284,7 @@ AI:
 Developer Tools:
   [ ] 13 IT-Tools      — browser utilities      →  tools.<domain>
   [ ] 14 CyberChef     — data transformation    →  cyberchef.<domain>
+  [ ] 27 Forgejo       — self-hosted git forge  →  forgejo.<domain>
   [ ] 24 RSSHub        — RSS generator          →  rsshub.<domain>
 
 Diagram And Design:
@@ -280,6 +311,9 @@ Security:
 
 Search:
   [ ] 26 Whoogle       — privacy search         →  whoogle.<domain>
+
+Lifestyle:
+  [ ] 30 Mealie        — recipe manager         →  mealie.<domain>
 
 Host Addons:
   [ ] 11 VErgo Terminal — zsh, prompt, completions, CLI UX
@@ -354,6 +388,7 @@ subdomains:
   filebrowser: files
   it-tools: tools
   cyberchef: cyberchef
+  forgejo: forgejo
   drawio: drawio
   excalidraw: excalidraw
   homer: homer
@@ -366,6 +401,7 @@ subdomains:
   rsshub: rsshub
   vaultwarden: vault
   whoogle: whoogle
+  mealie: mealie
 ```
 
 Record only subdomains for services that are actually selected (foundation or optional).
@@ -385,6 +421,7 @@ During rendering, flatten these values into service placeholders:
 - `subdomains.filebrowser` -> `{{FILEBROWSER_SUBDOMAIN}}`
 - `subdomains.it-tools` -> `{{IT_TOOLS_SUBDOMAIN}}`
 - `subdomains.cyberchef` -> `{{CYBERCHEF_SUBDOMAIN}}`
+- `subdomains.forgejo` -> `{{FORGEJO_SUBDOMAIN}}`
 - `subdomains.drawio` -> `{{DRAWIO_SUBDOMAIN}}`
 - `subdomains.excalidraw` -> `{{EXCALIDRAW_SUBDOMAIN}}`
 - `subdomains.homer` -> `{{HOMER_SUBDOMAIN}}`
@@ -397,3 +434,4 @@ During rendering, flatten these values into service placeholders:
 - `subdomains.rsshub` -> `{{RSSHUB_SUBDOMAIN}}`
 - `subdomains.vaultwarden` -> `{{VAULTWARDEN_SUBDOMAIN}}`
 - `subdomains.whoogle` -> `{{WHOOGLE_SUBDOMAIN}}`
+- `subdomains.mealie` -> `{{MEALIE_SUBDOMAIN}}`
