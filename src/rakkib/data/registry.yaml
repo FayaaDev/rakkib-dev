@@ -682,7 +682,7 @@ services:
     required: false
     optional: true
     image: lissy93/dashy:latest
-    default_port: 80
+    default_port: 8080
     default_subdomain: dashy
     subdomain_key: dashy
     subdomain_placeholder: DASHY_SUBDOMAIN
