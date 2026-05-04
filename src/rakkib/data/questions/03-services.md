@@ -334,3 +334,4 @@ During rendering, flatten these values into service placeholders:
 - `subdomains.homer` -> `{{HOMER_SUBDOMAIN}}`
 - `subdomains.dozzle` -> `{{DOZZLE_SUBDOMAIN}}`
 - `subdomains.glance` -> `{{GLANCE_SUBDOMAIN}}`
+- `subdomains.dashy` -> `{{DASHY_SUBDOMAIN}}`
