@@ -119,6 +119,8 @@ def test_phase_3_service_catalog_and_rules():
         "forgejo",
         "privatebin",
         "stirling-pdf",
+        "mealie",
+        "gitea",
     ]
 
     assert len(schema.rules) == 1
