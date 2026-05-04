@@ -9,6 +9,12 @@ When OpenCode is launched inside `Rakkib/services`, the user can:
 - reference a list file here (example: `batch1.md`, `batchx.md`, `MoreServices/*.md`),
 and the agent implements the service in the Rakkib app (registry + templates + hooks + verification updates).
 
+## Branch Rules
+
+- **All commits go to `main`.** Never commit service work directly to `runtime`.
+- After pushing to `main`, mirror the changed files (`install.sh`, `pyproject.toml`, `src/rakkib/**`) to the `runtime` orphan branch and push it. The test server installs from `runtime` by default.
+- Do not copy dev-only paths (`.beads/`, `.opencode/`, `docs/`, `services/`, `tests/`, `web/`) to `runtime`.
+
 ## Hard Requirements
 
 1. Mandatory test-server validation for EVERY new service

@@ -14,7 +14,8 @@ curl -fsSL https://raw.githubusercontent.com/FayaaDev/Rakkib/main/install.sh | b
 - `main` is the development branch and still hosts the public `install.sh` used by the curl-pipe command.
 - `runtime` is an orphan branch used as the slim install snapshot. It intentionally has no shared history with `main` and should contain only `.gitignore`, `README.md`, `install.sh`, `pyproject.toml`, and `src/rakkib/**`.
 - The installer defaults `RAKKIB_BRANCH` to `runtime`, so the public curl command fetches `install.sh` from `main` but clones the slim `runtime` tree onto target hosts.
-- When `install.sh`, `pyproject.toml`, or `src/rakkib/**` changes on `main`, mirror those runtime files to the orphan `runtime` branch and push it. Do not copy dev-only files such as `.beads/`, `.opencode/`, `docs/`, `services/`, `tests/`, or `web/`.
+- **All development commits go to `main`. Never commit directly to `runtime`.** `runtime` is write-protected from dev work — it only receives updates via an explicit sync from `main`.
+- When `install.sh`, `pyproject.toml`, or `src/rakkib/**` changes on `main`, mirror those files to `runtime` and push it. Do not copy dev-only files such as `.beads/`, `.opencode/`, `docs/`, `services/`, `tests/`, or `web/`.
 - Use `RAKKIB_BRANCH=main` only when intentionally installing the full development tree.
 
 ## Guidelines
