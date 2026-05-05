@@ -125,6 +125,54 @@ class TestRun:
                     cloudflare.run(state)
                     mock_copy.assert_called_once()
 
+    def test_artifact_lookup_skips_permission_denied_candidate(self, tmp_path, monkeypatch):
+        denied_cert = Path("/root/.cloudflared/cert.pem")
+        admin_cert = tmp_path / "home" / "ubuntu" / ".cloudflared" / "cert.pem"
+        admin_cert.parent.mkdir(parents=True)
+        admin_cert.write_text("cert-data")
+        original_is_file = Path.is_file
+        original_open = Path.open
+
+        monkeypatch.setattr(
+            cloudflare,
+            "_candidate_cloudflared_paths",
+            lambda name, admin_user=None: [denied_cert, admin_cert],
+        )
+
+        def fake_is_file(path):
+            if path == denied_cert:
+                return True
+            return original_is_file(path)
+
+        def fake_open(path, *args, **kwargs):
+            if path == denied_cert:
+                raise PermissionError("permission denied")
+            return original_open(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "is_file", fake_is_file)
+        monkeypatch.setattr(Path, "open", fake_open)
+
+        assert cloudflare._find_cloudflared_artifact("cert.pem", admin_user="ubuntu") == admin_cert
+
+    def test_unreadable_artifact_lookup_handles_permission_denied(self, monkeypatch):
+        denied_cert = Path("/root/.cloudflared/cert.pem")
+        original_exists = Path.exists
+
+        monkeypatch.setattr(
+            cloudflare,
+            "_candidate_cloudflared_paths",
+            lambda name, admin_user=None: [denied_cert],
+        )
+
+        def fake_exists(path):
+            if path == denied_cert:
+                raise PermissionError("permission denied")
+            return original_exists(path)
+
+        monkeypatch.setattr(Path, "exists", fake_exists)
+
+        assert cloudflare._find_unreadable_cloudflared_artifact("cert.pem") == denied_cert
+
     def test_run_new_tunnel_creates_and_discovers(self, tmp_path):
         state = _make_state(tmp_path)
         cloudflared_dir = tmp_path / "data" / "cloudflared"
