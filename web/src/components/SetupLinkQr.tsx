@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import QRCode from 'qrcode'
+import { fetchBootstrapToken } from '../api/client'
 
 type SetupLinkQrProps = {
   title?: string
@@ -7,6 +8,7 @@ type SetupLinkQrProps = {
 
 export function SetupLinkQr({ title = 'Setup Link' }: SetupLinkQrProps) {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
+  const [resolvedUrl, setResolvedUrl] = useState<string | null>(null)
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
 
   const setupUrl = useMemo(() => {
@@ -26,14 +28,50 @@ export function SetupLinkQr({ title = 'Setup Link' }: SetupLinkQrProps) {
   useEffect(() => {
     let cancelled = false
 
-    if (!setupUrl) {
+    if (setupUrl) {
+      setResolvedUrl(setupUrl)
+      return
+    }
+
+    void (async () => {
+      try {
+        const result = await fetchBootstrapToken()
+        if (cancelled) {
+          return
+        }
+
+        if (!result.token) {
+          setResolvedUrl(null)
+          return
+        }
+
+        const url = `${window.location.origin}/?token=${encodeURIComponent(result.token)}`
+        sessionStorage.setItem('rakkib_setup_token', result.token)
+        sessionStorage.setItem('rakkib_setup_url', url)
+        setResolvedUrl(url)
+      } catch {
+        if (!cancelled) {
+          setResolvedUrl(null)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [setupUrl])
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (!resolvedUrl) {
       setQrDataUrl(null)
       return
     }
 
     void (async () => {
       try {
-        const dataUrl = await QRCode.toDataURL(setupUrl, {
+        const dataUrl = await QRCode.toDataURL(resolvedUrl, {
           errorCorrectionLevel: 'L',
           margin: 4,
           scale: 6,
@@ -51,15 +89,15 @@ export function SetupLinkQr({ title = 'Setup Link' }: SetupLinkQrProps) {
     return () => {
       cancelled = true
     }
-  }, [setupUrl])
+  }, [resolvedUrl])
 
   async function handleCopy() {
-    if (!setupUrl) {
+    if (!resolvedUrl) {
       return
     }
 
     try {
-      await navigator.clipboard.writeText(setupUrl)
+      await navigator.clipboard.writeText(resolvedUrl)
       setCopyState('copied')
       window.setTimeout(() => setCopyState('idle'), 1400)
     } catch {
@@ -68,7 +106,7 @@ export function SetupLinkQr({ title = 'Setup Link' }: SetupLinkQrProps) {
     }
   }
 
-  if (!setupUrl) {
+  if (!resolvedUrl) {
     return null
   }
 
@@ -91,7 +129,7 @@ export function SetupLinkQr({ title = 'Setup Link' }: SetupLinkQrProps) {
         <div className="setup-link-copy">
           <p className="hero-text">Scan on your phone to re-open this setup session.</p>
           <code className="setup-link-code" dir="ltr">
-            {setupUrl}
+            {resolvedUrl}
           </code>
         </div>
       </div>

@@ -1,10 +1,16 @@
 import type { SessionStatus, SetupPhasePayload, SetupPhaseSubmitResult, SetupResume, SetupState } from './types'
 
 const sessionBootstrapPath = '/api/session/bootstrap'
+const sessionBootstrapTokenPath = '/api/session/bootstrap-token'
 
 export type SessionBootstrapResult = {
   ok: boolean
   message?: string
+}
+
+export type SessionBootstrapTokenResult = {
+  token: string | null
+  auth_enabled: boolean
 }
 
 export class ApiError extends Error {
@@ -89,6 +95,10 @@ export async function bootstrapSession(token: string): Promise<SessionBootstrapR
 
 export async function fetchSession(): Promise<SessionStatus> {
   return fetchApi<SessionStatus>('/api/session')
+}
+
+export async function fetchBootstrapToken(): Promise<SessionBootstrapTokenResult> {
+  return fetchApi<SessionBootstrapTokenResult>(sessionBootstrapTokenPath)
 }
 
 export async function fetchSetupState(): Promise<SetupState> {

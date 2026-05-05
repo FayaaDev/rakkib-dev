@@ -208,6 +208,19 @@ def build_api_router(auth: AuthManager) -> APIRouter:
             "auth_enabled": auth.token_auth_enabled,
         }
 
+    @router.get("/session/bootstrap-token")
+    def session_bootstrap_token(request: Request, response: Response) -> dict[str, object]:
+        """Return the in-process bootstrap token for authenticated sessions.
+
+        This lets the UI re-render the setup QR code even after refresh/new tab.
+        """
+        auth.require_api_auth(request)
+        response.headers["Cache-Control"] = "no-store"
+        return {
+            "token": auth.bootstrap_token(),
+            "auth_enabled": auth.token_auth_enabled,
+        }
+
     @router.get("/state")
     def state_payload(request: Request, response: Response) -> dict[str, object]:
         auth.require_api_auth(request)
