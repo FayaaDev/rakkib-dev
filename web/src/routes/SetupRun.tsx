@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import QRCode from 'qrcode'
 import { ApiError, fetchSetupRunStatus, startSetupRun } from '../api/client'
 import type { SetupRunStatus } from '../api/types'
 import { SetupShell } from '../components/SetupShell'
@@ -36,6 +37,83 @@ type RunScreenState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
   | { status: 'ready'; run: SetupRunStatus }
+
+type CloudflareAuthPromptProps = {
+  url: string
+}
+
+function CloudflareAuthPrompt({ url }: CloudflareAuthPromptProps) {
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
+
+  useEffect(() => {
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const dataUrl = await QRCode.toDataURL(url, {
+          errorCorrectionLevel: 'L',
+          margin: 4,
+          scale: 7,
+        })
+        if (!cancelled) {
+          setQrDataUrl(dataUrl)
+        }
+      } catch {
+        if (!cancelled) {
+          setQrDataUrl(null)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [url])
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopyState('copied')
+      window.setTimeout(() => setCopyState('idle'), 1400)
+    } catch {
+      setCopyState('error')
+      window.setTimeout(() => setCopyState('idle'), 1800)
+    }
+  }
+
+  return (
+    <article className="setup-field-card setup-cloudflare-auth" aria-labelledby="cloudflare-auth-title">
+      <div className="setup-field-header">
+        <div>
+          <p className="section-label">Action Required</p>
+          <h2 id="cloudflare-auth-title">Approve Cloudflare access</h2>
+        </div>
+        <span className="setup-status-pill setup-status-pill-attention">Waiting for you</span>
+      </div>
+
+      <div className="setup-cloudflare-grid">
+        <div className="setup-cloudflare-qr" aria-hidden="true">
+          {qrDataUrl ? <img src={qrDataUrl} alt="" loading="eager" decoding="async" /> : null}
+        </div>
+        <div className="setup-cloudflare-copy">
+          <p className="hero-text">
+            Scan this QR code or open the Cloudflare link to approve the domain. Keep this browser open; setup will continue after Cloudflare finishes the login.
+          </p>
+          <div className="setup-run-actions">
+            <a className="bridge-button bridge-button-primary" href={url} target="_blank" rel="noreferrer">
+              Open Cloudflare
+            </a>
+            <button type="button" className="bridge-button" onClick={handleCopy}>
+              {copyState === 'copied' ? 'Copied' : copyState === 'error' ? 'Copy failed' : 'Copy link'}
+            </button>
+          </div>
+          <code className="setup-link-code" dir="ltr">{url}</code>
+        </div>
+      </div>
+    </article>
+  )
+}
 
 export function SetupRun() {
   const navigate = useNavigate()
@@ -132,6 +210,8 @@ export function SetupRun() {
 
     return (
       <div className="setup-phase-stack">
+        {run.attention?.type === 'cloudflare_auth' ? <CloudflareAuthPrompt url={run.attention.url} /> : null}
+
         <section className="setup-progress-card" aria-labelledby="setup-run-title">
           <div className="setup-progress-visual" aria-hidden="true">
             <div className={`setup-launch-ring is-${run.status}`}>

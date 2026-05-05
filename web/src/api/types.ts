@@ -92,4 +92,5 @@ export type SetupRunStatus = {
   confirmed: boolean
   resume_phase: number
   log_tail: string[]
+  attention: { type: 'cloudflare_auth'; url: string } | null
 }
