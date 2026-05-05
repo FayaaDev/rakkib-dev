@@ -60,6 +60,12 @@ class AuthManager:
         self._sessions.add(session_id)
         return session_id
 
+    def bootstrap_token(self) -> str | None:
+        """Return the active bootstrap token for this process when enabled."""
+        if not self._token_auth_enabled:
+            return None
+        return self._startup_token or None
+
     def set_session_cookie(self, response: Response, session_id: str) -> None:
         """Persist the session id as an HTTP-only cookie."""
         response.set_cookie(
