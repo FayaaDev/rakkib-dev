@@ -25,6 +25,12 @@ export function SetupBridge() {
     const params = new URLSearchParams(location.search)
     const token = params.get('token')?.trim()
 
+    if (token) {
+      // Persist token for subsequent setup pages (we remove it from the visible URL).
+      sessionStorage.setItem('rakkib_setup_token', token)
+      sessionStorage.setItem('rakkib_setup_url', `${window.location.origin}/?token=${encodeURIComponent(token)}`)
+    }
+
     stripTokenFromVisibleUrl(location.search, location.pathname, location.hash)
 
     if (!token) {

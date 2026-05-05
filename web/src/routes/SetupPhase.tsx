@@ -5,6 +5,7 @@ import { ApiError, fetchSetupPhase, submitSetupPhase } from '../api/client'
 import type { SetupPhasePayload, SetupServiceCatalogItem } from '../api/types'
 import { FieldEditor } from '../components/FieldEditor'
 import { FieldRenderer } from '../components/FieldRenderer'
+import { SetupLinkQr } from '../components/SetupLinkQr'
 import { SetupShell } from '../components/SetupShell'
 
 const phaseLabels: Record<number, { title: string; description: string }> = {
@@ -205,6 +206,8 @@ export function SetupPhase() {
   return (
     <SetupShell title={page.title} description={page.description} currentPhase={payload.phase}>
       <div className="setup-phase-stack">
+        <SetupLinkQr />
+
         <article className="setup-field-card setup-phase-meta">
           <div className="setup-field-header">
             <div>

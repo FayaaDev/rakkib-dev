@@ -437,6 +437,53 @@
   background: var(--color-surface-dark);
 }
 
+.setup-link-card .bridge-button {
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
+.setup-link-grid {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  margin-top: 16px;
+}
+
+.setup-link-qr {
+  width: 160px;
+  padding: 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+.setup-link-qr img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.setup-link-copy .hero-text {
+  max-width: none;
+  margin-top: 0;
+}
+
+.setup-link-code {
+  display: block;
+  margin-top: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 4px;
+  background: var(--color-bg);
+  overflow-x: auto;
+  color: var(--color-text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 .setup-field-header {
   display: flex;
   align-items: flex-start;
@@ -653,6 +700,15 @@
   .setup-meta-grid div,
   .setup-service-item {
     display: grid;
+  }
+
+  .setup-link-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-link-qr {
+    width: min(240px, 100%);
+    margin: 0 auto;
   }
 
   .setup-phase-actions {

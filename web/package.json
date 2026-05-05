@@ -11,11 +11,13 @@
     "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
+    "qrcode": "^1.5.4",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-router-dom": "^7.14.2"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.5",
     "@cloudflare/vite-plugin": "^1.35.0",
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.12.2",
