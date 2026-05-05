@@ -8,7 +8,7 @@ import { SetupShell } from '../components/SetupShell'
 type ConfirmState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; run: SetupRunStatus; summary: SetupPhasePayload }
+  | { status: 'ready'; run: SetupRunStatus; summary: SetupPhasePayload | null; summaryError?: string }
 
 const summaryLabels: Record<string, string> = {
   platform: 'Platform',
@@ -70,12 +70,30 @@ export function SetupConfirm() {
 
     void (async () => {
       try {
-        const [run, summary] = await Promise.all([fetchSetupRunStatus(), fetchSetupPhase(6)])
+        const run = await fetchSetupRunStatus()
         if (cancelled) {
           return
         }
 
-        setState({ status: 'ready', run, summary })
+        try {
+          const summary = await fetchSetupPhase(6)
+          if (cancelled) {
+            return
+          }
+
+          setState({ status: 'ready', run, summary })
+        } catch (error) {
+          if (cancelled) {
+            return
+          }
+
+          setState({
+            status: 'ready',
+            run,
+            summary: null,
+            summaryError: 'Some summary details could not be loaded. The final review screen can still be reopened.',
+          })
+        }
       } catch (error) {
         if (cancelled) {
           return
@@ -146,7 +164,7 @@ export function SetupConfirm() {
     }
 
     const run = state.run
-    const entries = deploymentSummaryEntries(state.summary)
+    const entries = state.summary ? deploymentSummaryEntries(state.summary) : []
 
     if (!run.confirmed) {
       return (
@@ -157,14 +175,21 @@ export function SetupConfirm() {
               <h2 id="setup-confirm-title">Proceed with deployment using the above configuration?</h2>
             </div>
           </div>
-          <div className="setup-summary-grid">
-            {entries.map(([key, value]) => (
-              <div key={key} className="setup-summary-item">
-                <span>{friendlySummaryLabel(key)}</span>
-                <strong>{renderFieldValue(value)}</strong>
-              </div>
-            ))}
-          </div>
+          {entries.length > 0 ? (
+            <div className="setup-summary-grid">
+              {entries.map(([key, value]) => (
+                <div key={key} className="setup-summary-item">
+                  <span>{friendlySummaryLabel(key)}</span>
+                  <strong>{renderFieldValue(value)}</strong>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="hero-text">
+              The deployment summary is not available yet. You can edit the final review, or proceed if your saved setup choices are already confirmed.
+            </p>
+          )}
+          {state.summaryError ? <p className="setup-field-error">{state.summaryError}</p> : null}
           {actionError ? <p className="setup-submit-error">{actionError}</p> : null}
           <div className="setup-run-actions">
             <button type="button" className="bridge-button" onClick={() => navigate('/setup/phase/6')}>

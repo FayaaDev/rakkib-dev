@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from .api import build_api_router
 from .auth import AuthManager
@@ -29,6 +29,9 @@ def create_app(config: WebRuntimeConfig) -> FastAPI:
     @app.get("/{requested_path:path}", include_in_schema=False)
     def static_entry(request: Request, requested_path: str = ""):
         normalized = requested_path.strip("/")
+
+        if normalized == ".well-known/appspecific/com.chrome.devtools.json":
+            return JSONResponse({})
 
         if normalized:
             file_path = resolve_packaged_file(normalized)
