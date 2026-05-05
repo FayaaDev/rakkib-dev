@@ -22,6 +22,7 @@ console = Console()
 
 _KUMA_MANAGED_PREFIX = "Managed by Rakkib (service: "
 _OPENCLAW_INSTALL_URL = "https://openclaw.ai/install.sh"
+_CLAUDE_INSTALL_URL = "https://claude.ai/install.sh"
 _OPENCLAW_COMMAND_TIMEOUT = 900
 _OPENCLAW_GATEWAY_TIMEOUT = 180
 _OPENCLAW_PAIRING_TIMEOUT = 180
@@ -34,6 +35,105 @@ PACKAGE_MANAGER_SAFE_ENV = {
     "NEEDRESTART_SUSPEND": "1",
     "UCF_FORCE_CONFFOLD": "1",
 }
+
+
+def _run_as_root(command: list[str], *, timeout: int | None = None) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env.update(PACKAGE_MANAGER_SAFE_ENV)
+    return subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        check=True,
+        env=env,
+        timeout=timeout,
+        stdin=subprocess.DEVNULL,
+    )
+
+
+def _ensure_node_and_npm() -> None:
+    if shutil.which("npm") and shutil.which("node"):
+        return
+
+    wait_for_apt_locks()
+    _run_as_root(["sudo", "-n", "apt-get", "update"], timeout=600)
+    _run_as_root(
+        [
+            "sudo",
+            "-n",
+            "apt-get",
+            "install",
+            "-y",
+            "nodejs",
+            "npm",
+        ],
+        timeout=900,
+    )
+
+
+def claude_install(
+    state,
+    svc: dict,
+    repo: Path,
+    data_root: Path,
+    log_path: Path,
+    registry: dict,
+) -> None:
+    """Install Claude Code CLI for the service user."""
+    del svc, repo, data_root, log_path, registry
+    _run_as_service_user(
+        state,
+        ["bash", "-lc", f"curl -fsSL '{_CLAUDE_INSTALL_URL}' | bash"],
+        timeout=900,
+        timeout_label="Claude install.sh",
+    )
+
+
+def claude_uninstall(
+    state,
+    svc: dict,
+    repo: Path,
+    data_root: Path,
+    log_path: Path,
+    registry: dict,
+) -> None:
+    """Best-effort uninstall of Claude Code CLI."""
+    del svc, repo, data_root, log_path, registry
+    # Installer sets up a `claude` launcher. If it exists, try the built-in uninstall.
+    _run_as_service_user(state, ["bash", "-lc", "command -v claude"], check=False)
+    _run_as_service_user(state, ["bash", "-lc", "claude uninstall"], check=False, timeout=300)
+
+
+def codex_install(
+    state,
+    svc: dict,
+    repo: Path,
+    data_root: Path,
+    log_path: Path,
+    registry: dict,
+) -> None:
+    """Install OpenAI Codex CLI via npm for the service user."""
+    del svc, repo, data_root, log_path, registry
+    _ensure_node_and_npm()
+
+    # Install into the user's ~/.local so we don't need root-level npm globals.
+    _run_as_service_user(state, ["bash", "-lc", "npm config set prefix \"$HOME/.local\""], timeout=120)
+    _run_as_service_user(state, ["bash", "-lc", "npm i -g @openai/codex"], timeout=900, timeout_label="npm i -g @openai/codex")
+
+
+def codex_uninstall(
+    state,
+    svc: dict,
+    repo: Path,
+    data_root: Path,
+    log_path: Path,
+    registry: dict,
+) -> None:
+    """Best-effort uninstall of OpenAI Codex CLI."""
+    del svc, repo, data_root, log_path, registry
+    if not shutil.which("npm"):
+        return
+    _run_as_service_user(state, ["bash", "-lc", "npm uninstall -g @openai/codex"], check=False, timeout=600)
 
 
 def _write_text_if_changed(path: Path, content: str) -> bool:
@@ -744,6 +844,8 @@ POST_RENDER_HOOKS = {
 PRE_START_HOOKS = {
     "service_postgres_login_preflight": service_postgres_login_preflight,
     "openclaw_install": openclaw_install,
+    "claude_install": claude_install,
+    "codex_install": codex_install,
 }
 
 POST_START_HOOKS = {
@@ -756,4 +858,6 @@ RESTART_HOOKS = {
 
 REMOVE_HOOKS = {
     "openclaw_gateway_uninstall": openclaw_gateway_uninstall,
+    "claude_uninstall": claude_uninstall,
+    "codex_uninstall": codex_uninstall,
 }

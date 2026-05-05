@@ -62,6 +62,21 @@ service_catalog:
       numeric_alias: 10
       subdomain_key: openclaw
       default_subdomain: claw
+    - slug: claude
+      label: Claude
+      numeric_alias: 47
+      subdomain_key: null
+      default_subdomain: null
+    - slug: codex
+      label: Codex
+      numeric_alias: 48
+      subdomain_key: null
+      default_subdomain: null
+    - slug: anse
+      label: Anse
+      numeric_alias: 37
+      subdomain_key: anse
+      default_subdomain: anse
     - slug: filebrowser
       label: File Browser
       numeric_alias: 12
@@ -187,6 +202,51 @@ service_catalog:
       numeric_alias: 36
       subdomain_key: hermes-agent
       default_subdomain: hermes
+    - slug: cheshire-cat-ai
+      label: Cheshire Cat AI
+      numeric_alias: 38
+      subdomain_key: cheshire-cat-ai
+      default_subdomain: cat
+    - slug: flowise
+      label: Flowise
+      numeric_alias: 39
+      subdomain_key: flowise
+      default_subdomain: flowise
+    - slug: serge
+      label: Serge
+      numeric_alias: 40
+      subdomain_key: serge
+      default_subdomain: serge
+    - slug: chatpad
+      label: Chatpad AI
+      numeric_alias: 44
+      subdomain_key: chatpad
+      default_subdomain: chatpad
+    - slug: lobe-chat
+      label: Lobe Chat
+      numeric_alias: 45
+      subdomain_key: lobe-chat
+      default_subdomain: lobe
+    - slug: open-webui
+      label: Open WebUI
+      numeric_alias: 46
+      subdomain_key: open-webui
+      default_subdomain: webui
+    - slug: ollama-cpu
+      label: Ollama (CPU)
+      numeric_alias: 41
+      subdomain_key: ollama-cpu
+      default_subdomain: ollama-cpu
+    - slug: ollama-amd
+      label: Ollama (AMD)
+      numeric_alias: 42
+      subdomain_key: ollama-amd
+      default_subdomain: ollama-amd
+    - slug: ollama-nvidia
+      label: Ollama (NVIDIA)
+      numeric_alias: 43
+      subdomain_key: ollama-nvidia
+      default_subdomain: ollama-nvidia
   host_addons:
     - slug: vergo_terminal
       label: VErgo Terminal
@@ -208,13 +268,16 @@ fields:
     type: multi_select
     selection_mode: add_to_empty
     prompt: "Service categories: type service slugs to add (e.g. `n8n immich filebrowser`); numeric aliases like `6 8 12` are also accepted, or press Enter to skip all:"
-    canonical_values: [n8n, immich, transfer, jellyfin, openclaw, filebrowser, it-tools, cyberchef, drawio, excalidraw, homer, dozzle, glance, dashy, beszel, freshrss, actual-budget, rsshub, vaultwarden, whoogle, forgejo, privatebin, stirling-pdf, mealie, gitea, whoami, pairdrop, moodist, planning-poker, hermes-agent]
+    canonical_values: [n8n, immich, transfer, jellyfin, openclaw, claude, codex, anse, filebrowser, it-tools, cyberchef, drawio, excalidraw, homer, dozzle, glance, dashy, beszel, freshrss, actual-budget, rsshub, vaultwarden, whoogle, forgejo, privatebin, stirling-pdf, mealie, gitea, whoami, pairdrop, moodist, planning-poker, hermes-agent, cheshire-cat-ai, flowise, serge, chatpad, lobe-chat, open-webui, ollama-cpu, ollama-amd, ollama-nvidia]
     numeric_aliases:
       "6": n8n
       "7": immich
       "8": transfer
       "9": jellyfin
       "10": openclaw
+      "47": claude
+      "48": codex
+      "37": anse
       "12": filebrowser
       "13": it-tools
       "14": cyberchef
@@ -240,6 +303,15 @@ fields:
       "34": moodist
       "35": planning-poker
       "36": hermes-agent
+      "38": cheshire-cat-ai
+      "39": flowise
+      "40": serge
+      "41": ollama-cpu
+      "42": ollama-amd
+      "43": ollama-nvidia
+      "44": chatpad
+      "45": lobe-chat
+      "46": open-webui
     records:
       - selected_services
   - id: host_addons
@@ -310,6 +382,18 @@ File Sharing:
 
 AI:
   [ ] 10 OpenClaw      — AI assistant gateway   →  claw.<domain>
+  [ ] 47 Claude        — Claude Code (CLI)
+  [ ] 48 Codex         — OpenAI Codex (CLI)
+  [ ] 37 Anse          — AI chat UI             →  anse.<domain>
+  [ ] 38 Cheshire Cat  — agent microservice     →  cat.<domain>
+  [ ] 39 Flowise       — visual agent builder   →  flowise.<domain>
+  [ ] 40 Serge         — local LLM chat UI      →  serge.<domain>
+  [ ] 41 Ollama (CPU)   — local LLM API (11434)
+  [ ] 42 Ollama (AMD)   — local LLM API (11434)
+  [ ] 43 Ollama (NVIDIA) — local LLM API (11434)
+  [ ] 44 Chatpad AI     — ChatGPT UI             →  chatpad.<domain>
+  [ ] 45 Lobe Chat      — LLM chat UI            →  lobe.<domain>
+  [ ] 46 Open WebUI     — Ollama / OpenAI UI     →  webui.<domain>
 
 Developer Tools:
   [ ] 13 IT-Tools      — browser utilities      →  tools.<domain>
@@ -415,6 +499,16 @@ subdomains:
   transfer: transfer
   jellyfin: jellyfin
   openclaw: claw
+  anse: anse
+  cheshire-cat-ai: cat
+  flowise: flowise
+  serge: serge
+  ollama-cpu: ollama-cpu
+  ollama-amd: ollama-amd
+  ollama-nvidia: ollama-nvidia
+  chatpad: chatpad
+  lobe-chat: lobe
+  open-webui: webui
   filebrowser: files
   it-tools: tools
   cyberchef: cyberchef
@@ -448,6 +542,16 @@ During rendering, flatten these values into service placeholders:
 - `subdomains.transfer` -> `{{TRANSFER_SUBDOMAIN}}`
 - `subdomains.jellyfin` -> `{{JELLYFIN_SUBDOMAIN}}`
 - `subdomains.openclaw` -> `{{OPENCLAW_SUBDOMAIN}}`
+- `subdomains.anse` -> `{{ANSE_SUBDOMAIN}}`
+- `subdomains.cheshire-cat-ai` -> `{{CHESHIRE_CAT_AI_SUBDOMAIN}}`
+- `subdomains.flowise` -> `{{FLOWISE_SUBDOMAIN}}`
+- `subdomains.serge` -> `{{SERGE_SUBDOMAIN}}`
+- `subdomains.ollama-cpu` -> `{{OLLAMA_CPU_SUBDOMAIN}}`
+- `subdomains.ollama-amd` -> `{{OLLAMA_AMD_SUBDOMAIN}}`
+- `subdomains.ollama-nvidia` -> `{{OLLAMA_NVIDIA_SUBDOMAIN}}`
+- `subdomains.chatpad` -> `{{CHATPAD_SUBDOMAIN}}`
+- `subdomains.lobe-chat` -> `{{LOBE_CHAT_SUBDOMAIN}}`
+- `subdomains.open-webui` -> `{{OPEN_WEBUI_SUBDOMAIN}}`
 - `subdomains.filebrowser` -> `{{FILEBROWSER_SUBDOMAIN}}`
 - `subdomains.it-tools` -> `{{IT_TOOLS_SUBDOMAIN}}`
 - `subdomains.cyberchef` -> `{{CYBERCHEF_SUBDOMAIN}}`

@@ -379,7 +379,19 @@ def _deploy_single_service(state: State, svc: dict, repo: Path, data_root: Path)
 
 def _host_service_responds(svc: dict) -> bool:
     port = svc.get("default_port")
-    if not port or not svc.get("host_port"):
+    if not svc.get("host_port"):
+        check = str(svc.get("installed_check") or "").strip()
+        if not check:
+            return False
+        result = subprocess.run(
+            ["bash", "-lc", check],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return result.returncode == 0
+
+    if not port:
         return False
 
     path = str((svc.get("monitoring") or {}).get("path") or "/")

@@ -1,0 +1,5 @@
+	# Cheshire Cat AI (admin UI + API)
+	@cheshirecat host {{CHESHIRE_CAT_AI_SUBDOMAIN}}.{{DOMAIN}}
+	handle @cheshirecat {
+		reverse_proxy cheshire-cat-ai:80
+	}

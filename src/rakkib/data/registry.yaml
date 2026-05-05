@@ -641,6 +641,117 @@ services:
       expected_text: Hermes
     notes: "Hermes Agent dashboard and gateway. WARNING: dashboard may expose secrets; do not expose publicly without authentication."
 
+  - id: chatpad
+    state_bucket: selected_services
+    required: false
+    optional: true
+    image: ghcr.io/deiucanta/chatpad:latest
+    default_port: 80
+    default_subdomain: chatpad
+    subdomain_key: chatpad
+    subdomain_placeholder: CHATPAD_SUBDOMAIN
+    env_keys: []
+    depends_on: []
+    host_service: false
+    host_port: false
+    caddy:
+      template: chatpad-public.caddy.tmpl
+    homepage:
+      category: AI
+      name: Chatpad AI
+      description: ChatGPT UI (local-first)
+      icon: chatpad.png
+    monitoring:
+      enabled: true
+      type: http
+      target: public_url
+      path: /
+      interval: 60
+      timeout: 10
+      retries: 3
+    smoke:
+      path: /
+      expected_text: Chatpad
+    notes: "Chatpad AI web UI. Optional. Data is stored in the browser by default."
+
+  - id: lobe-chat
+    state_bucket: selected_services
+    required: false
+    optional: true
+    image: lobehub/lobe-chat:latest
+    default_port: 3210
+    default_subdomain: lobe
+    subdomain_key: lobe-chat
+    subdomain_placeholder: LOBE_CHAT_SUBDOMAIN
+    env_keys:
+      - OPENAI_API_KEY
+      - OPENAI_PROXY_URL
+      - OPENAI_MODEL_LIST
+    depends_on: []
+    host_service: false
+    host_port: false
+    caddy:
+      template: lobe-chat-public.caddy.tmpl
+    homepage:
+      category: AI
+      name: Lobe Chat
+      description: ChatGPT / LLM web UI
+      icon: lobe-chat.png
+    monitoring:
+      enabled: true
+      type: http
+      target: public_url
+      path: /
+      interval: 60
+      timeout: 10
+      retries: 3
+    smoke:
+      path: /
+      expected_text: Lobe
+    notes: "Lobe Chat web UI. Optional. Configure model provider keys via env."
+
+  - id: open-webui
+    state_bucket: selected_services
+    required: false
+    optional: true
+    image: ghcr.io/open-webui/open-webui:main
+    default_port: 8080
+    default_subdomain: webui
+    subdomain_key: open-webui
+    subdomain_placeholder: OPEN_WEBUI_SUBDOMAIN
+    env_keys:
+      - OLLAMA_BASE_URL
+      - OPENAI_API_KEY
+      - WEBUI_SECRET_KEY
+    depends_on: []
+    host_service: false
+    host_port: false
+    caddy:
+      template: open-webui-public.caddy.tmpl
+    data_dirs:
+      - data/open-webui
+    secrets:
+      WEBUI_SECRET_KEY:
+        factory: password
+        length: 48
+    homepage:
+      category: AI
+      name: Open WebUI
+      description: UI for Ollama and OpenAI-compatible APIs
+      icon: open-webui.png
+    monitoring:
+      enabled: true
+      type: http
+      target: public_url
+      path: /
+      interval: 60
+      timeout: 10
+      retries: 3
+    smoke:
+      path: /
+      expected_text: Open WebUI
+    notes: "Open WebUI. Optional. Set OLLAMA_BASE_URL to reach your Ollama (host or remote)."
+
   - id: forgejo
     state_bucket: selected_services
     required: false
@@ -795,6 +906,219 @@ services:
       remove:
         - openclaw_gateway_uninstall
     notes: "Personal AI assistant gateway. Runs as a systemd user service on the host (not in Docker). Proxy via Caddy to host port 18789."
+
+  - id: claude
+    state_bucket: selected_services
+    required: false
+    optional: true
+    host_service: true
+    host_port: false
+    default_port: null
+    default_subdomain: null
+    subdomain_key: null
+    subdomain_placeholder: null
+    env_keys: []
+    depends_on: []
+    caddy:
+      template: null
+    installed_check: "command -v claude"
+    hooks:
+      pre_start:
+        - claude_install
+      remove:
+        - claude_uninstall
+    homepage:
+      category: AI
+      name: Claude
+      description: Claude Code CLI
+      icon: claude.png
+    notes: "Installs Claude Code CLI via https://claude.ai/install.sh. Optional. Not exposed via Caddy."
+
+  - id: codex
+    state_bucket: selected_services
+    required: false
+    optional: true
+    host_service: true
+    host_port: false
+    default_port: null
+    default_subdomain: null
+    subdomain_key: null
+    subdomain_placeholder: null
+    env_keys: []
+    depends_on: []
+    caddy:
+      template: null
+    installed_check: "command -v codex"
+    hooks:
+      pre_start:
+        - codex_install
+      remove:
+        - codex_uninstall
+    homepage:
+      category: AI
+      name: Codex
+      description: OpenAI Codex CLI
+      icon: codex.png
+    notes: "Installs @openai/codex via npm global install. Optional. Not exposed via Caddy."
+
+  - id: cheshire-cat-ai
+    state_bucket: selected_services
+    required: false
+    optional: true
+    image: ghcr.io/cheshire-cat-ai/core:latest
+    container_name: cheshire-cat-ai
+    default_port: 80
+    default_subdomain: cat
+    subdomain_key: cheshire-cat-ai
+    subdomain_placeholder: CHESHIRE_CAT_AI_SUBDOMAIN
+    env_keys: []
+    depends_on: []
+    host_service: false
+    host_port: false
+    caddy:
+      template: cheshire-cat-ai-public.caddy.tmpl
+    data_dirs:
+      - data/cheshire-cat-ai/qdrant
+    homepage:
+      category: AI
+      name: Cheshire Cat AI
+      description: AI agent microservice
+      icon: cheshire-cat-ai.png
+    monitoring:
+      enabled: true
+      type: http
+      target: public_url
+      path: /docs
+      interval: 60
+      timeout: 10
+      retries: 3
+    smoke:
+      path: /docs
+      expected_text: Swagger
+    notes: "AI agent microservice with an admin UI and REST API. Ships with a Qdrant sidecar for RAG. Optional."
+
+  - id: flowise
+    state_bucket: selected_services
+    required: false
+    optional: true
+    image: flowiseai/flowise:latest
+    container_name: flowise
+    default_port: 3000
+    default_subdomain: flowise
+    subdomain_key: flowise
+    subdomain_placeholder: FLOWISE_SUBDOMAIN
+    env_keys: []
+    depends_on: []
+    host_service: false
+    host_port: false
+    caddy:
+      template: flowise-public.caddy.tmpl
+    data_dirs:
+      - data/flowise/.flowise
+    homepage:
+      category: AI
+      name: Flowise
+      description: Visual LLM app and agent builder
+      icon: flowise.png
+    monitoring:
+      enabled: true
+      type: http
+      target: public_url
+      path: /
+      interval: 60
+      timeout: 10
+      retries: 3
+    smoke:
+      path: /
+      expected_text: Flowise
+    notes: "Visual AI agent builder. Optional. Uses local persistent storage under /root/.flowise."
+
+  - id: serge
+    state_bucket: selected_services
+    required: false
+    optional: true
+    image: ghcr.io/serge-chat/serge:latest
+    container_name: serge
+    default_port: 8008
+    default_subdomain: serge
+    subdomain_key: serge
+    subdomain_placeholder: SERGE_SUBDOMAIN
+    env_keys:
+      - SERGE_JWT_SECRET
+    depends_on: []
+    host_service: false
+    host_port: false
+    caddy:
+      template: serge-public.caddy.tmpl
+    secrets:
+      SERGE_JWT_SECRET:
+        factory: password
+    data_dirs:
+      - data/serge/weights
+      - data/serge/db
+    homepage:
+      category: AI
+      name: Serge
+      description: Self-hosted chat UI for local LLMs
+      icon: serge.png
+    monitoring:
+      enabled: true
+      type: http
+      target: public_url
+      path: /
+      interval: 60
+      timeout: 10
+      retries: 3
+    smoke:
+      path: /
+      expected_text: Serge
+    notes: "Web UI for chatting with local llama.cpp-backed models. Optional. Requires substantial RAM/CPU for larger models."
+
+  - id: anse
+    state_bucket: selected_services
+    required: false
+    optional: true
+    image: ddiu8081/anse:latest
+    container_name: anse
+    default_port: 3000
+    default_subdomain: anse
+    subdomain_key: anse
+    subdomain_placeholder: ANSE_SUBDOMAIN
+    env_keys:
+      - OPENAI_API_KEY
+      - OPENAI_API_BASE_URL
+      - HEAD_SCRIPTS
+      - ANSE_SECRET_KEY
+      - SITE_PASSWORD
+      - OPENAI_API_MODEL
+    env_preserve_keys:
+      - ANSE_SECRET_KEY
+    depends_on: []
+    host_service: false
+    host_port: false
+    caddy:
+      template: anse-public.caddy.tmpl
+    secrets:
+      ANSE_SECRET_KEY:
+        factory: password
+        length: 48
+    homepage:
+      category: AI
+      name: Anse
+      description: Optimized UI for AI chats (OpenAI-compatible)
+      icon: anse.png
+    monitoring:
+      enabled: true
+      type: http
+      target: public_url
+      path: /
+      interval: 60
+      timeout: 10
+      retries: 3
+    smoke:
+      path: /
+      expected_text: Anse
+    notes: "AI chat UI (Astro) supporting OpenAI-compatible backends. Optional. Set OPENAI_API_KEY in .env or via the UI settings."
 
   - id: homer
     state_bucket: selected_services
@@ -1293,3 +1617,54 @@ services:
       path: /
       expected_text: PrivateBin
     notes: "Encrypted pastebin (PrivateBin). Optional. Uses privatebin/nginx-fpm-alpine with filesystem storage persisted under /srv/data."
+
+  - id: ollama-cpu
+    state_bucket: selected_services
+    required: false
+    optional: true
+    image: ollama/ollama:latest
+    default_port: 11434
+    default_subdomain: null
+    subdomain_key: null
+    subdomain_placeholder: null
+    env_keys: []
+    depends_on: []
+    host_service: false
+    host_port: true
+    data_dirs:
+      - data/ollama-cpu
+    notes: "Ollama LLM runtime (CPU). Optional. Binds API port 11434 to 127.0.0.1 only (not exposed via Caddy). Use this service if you do not have a supported GPU runtime."
+
+  - id: ollama-amd
+    state_bucket: selected_services
+    required: false
+    optional: true
+    image: ollama/ollama:rocm
+    default_port: 11434
+    default_subdomain: null
+    subdomain_key: null
+    subdomain_placeholder: null
+    env_keys: []
+    depends_on: []
+    host_service: false
+    host_port: true
+    data_dirs:
+      - data/ollama-amd
+    notes: "Ollama LLM runtime (AMD ROCm). Optional. Requires ROCm-capable host drivers and maps /dev/kfd + /dev/dri into the container. API port 11434 is bound to 127.0.0.1 only (not exposed via Caddy)."
+
+  - id: ollama-nvidia
+    state_bucket: selected_services
+    required: false
+    optional: true
+    image: ollama/ollama:latest
+    default_port: 11434
+    default_subdomain: null
+    subdomain_key: null
+    subdomain_placeholder: null
+    env_keys: []
+    depends_on: []
+    host_service: false
+    host_port: true
+    data_dirs:
+      - data/ollama-nvidia
+    notes: "Ollama LLM runtime (NVIDIA GPU). Optional. Requires NVIDIA Container Toolkit on the host; compose requests an NVIDIA GPU device reservation. API port 11434 is bound to 127.0.0.1 only (not exposed via Caddy)."
