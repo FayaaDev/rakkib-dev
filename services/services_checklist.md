@@ -37,6 +37,7 @@ All Batch 1 services are implemented.
 
 ### Secrets And Auth
 - [x] Vaultwarden (B)
+- [ ] Adguard 
 
 ### Search And RSS
 - [x] RSSHub (A)
@@ -62,99 +63,61 @@ This list preserves `batchx.md` categorization and marks what is already impleme
 Duplicates already listed in **Batch 1** are removed here.
 
 ### Dashboards
-- [ ] Heimdall (B)
 - [ ] Homarr (B)
-- [ ] Dash. / Dashdot (E)
 
 ### Developer Tools
 - [x] Planning Poker (A)
-- [ ] Code Server (B)
-- [ ] Atuin Server (C)
 - [x] Hermes Agent (E)
 
 ### Books And Reading
 - [ ] openbooks (B)
-- [ ] Booksonic (D)
-- [ ] Calibre-Web (D)
-- [ ] Kavita (D)
-- [ ] Komga (D)
-- [ ] PodFetch (D)
-- [ ] Readarr (D)
-- [ ] Suwayomi (D)
 
 ### Monitoring
 - [ ] Grafana (B)
 - [ ] Glances (E)
-- [ ] Netdata (E)
+- [ ] Watchtower (E)
+- [ ] Autoheal (E)
 
 ### Personal And Lifestyle
 - [x] Moodist (A)
 - [ ] DailyTxT (B)
-- [ ] Flightlog (B)
-- [ ] Grocy (B)
-- [ ] Hammond (B)
-- [ ] HomeBox (B)
-- [ ] Koillection (B)
-- [ ] LinkStack (B)
-- [ ] LubeLogger (B)
-- [ ] Movary (B)
 
 ### File Sync And Sharing
 - [x] PairDrop (A)
 - [ ] Pingvin Share (B)
-- [ ] Send (B)
-- [ ] Syncthing (B)
-- [ ] Zipline (B)
+- [ ] WebDAV (B)
 
-### Search And RSS
-- [ ] RSS (A)
-- [ ] SearXNG (B)
-
-### Media Management
-- [ ] Bazarr (D)
-- [ ] Kapowarr (D)
-- [ ] Lidarr (D)
-- [ ] Maintainerr (D)
-- [ ] Mylar3 (D)
-- [ ] Radarr (D)
-- [ ] Sonarr (D)
-- [ ] Tautulli (D)
-- [ ] Wizarr (D)
-
-### Media Server
-- [ ] Audiobookshelf (D)
-- [ ] mStream Music (D)
-- [ ] Navidrome (D)
-- [ ] Owncast (D)
 
 ### Document And Knowledge
-- [ ] ChangeDetection (B)
-- [ ] DokuWiki (B)
-- [ ] flatnotes (B)
 - [ ] Memos (B)
 - [ ] Notemark (B)
-- [ ] Silverbullet (B)
-- [ ] Trilium (B)
-- [ ] Kiwix Server (D)
+
 
 ### Finance
 - [ ] Wallos (B)
 
-### Git And DevOps
-- [ ] OneDev (B)
+### AI
+- [ ] Claude (A)
+- [x] Codex (A)
+- [x] Anse (B)
+- [ ] Chatpad AI (B)
+- [ ] Cheshire Cat AI (B)
+- [ ] Flowise AI (B)
+- [ ] Lobe Chat (B)
+- [ ] Ollama - AMD (E)
+- [ ] Ollama - CPU (E)
+- [ ] Ollama - Nvidia (E)
+- [ ] Open WebUI (B)
+- [x] OpenClaw (B)
+- [ ] Serge (B)
 
-### Remote Access
-- [ ] Hello World (A)
-- [x] Whoami (A)
-- [ ] Sshwifty (B)
+### Home Automation
+- [ ] ESP Home (B)
+- [ ] Gladys Assistant (B)
+- [ ] Matter Server (B)
 
-### Secrets And Auth
-- [ ] 2FAuth (B)
+### Media
+- [ ] Plex (D)
 
-### Utility
-- [ ] LibreTranslate (B)
-
-### Calendar And Contacts
-- [ ] Baikal (B)
-
-### Diagram And Design
+### Networking
+- [ ] Gluten VPN (E)

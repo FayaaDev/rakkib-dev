@@ -1,12 +1,25 @@
 # Services Workspace — Agent Rules (Rakkib)
 
 This folder is where service names/lists get turned into real, deployable Rakkib services.
+Use 'bd' for task tracking
+
+## bd Task Tracking (Brief)
+
+- Use `bd` for ALL task/issue tracking. Do not keep markdown TODO lists.
+- Start work by checking what is unblocked: `bd ready --json`
+- Create work items as needed:
+  - `bd create "Title" --description "Context" -t task|bug|feature -p 0-4 --json`
+  - Use stdin for descriptions with tricky quoting: `printf '%s' '...' | bd create "Title" --description=- --json`
+- Claim/update non-interactively (do NOT use `bd edit`):
+  - `bd update <id> --claim --json`
+  - `bd update <id> --notes "..." --acceptance "..." --priority 1 --json`
+- Close when done: `bd close <id> --reason "Done" --json`
 
 ## Mission
 
 When OpenCode is launched inside `Rakkib/services`, the user can:
 - mention a service name (example: "Vaultwarden", "File Browser"), or
-- reference a list file here (example: `batch1.md`, `batchx.md`, `MoreServices/*.md`),
+- reference a list file  `services_checklist.md`.
 and the agent implements the service in the Rakkib app (registry + templates + hooks + verification updates).
 
 ## Branch Rules
@@ -21,7 +34,7 @@ and the agent implements the service in the Rakkib app (registry + templates + h
 
 Run deployments on the test server (not this machine):
 
-`sshpass -p 'ub' ssh -o StrictHostKeyChecking=accept-new root@174.138.183.153`
+sshpass -p 'ub' ssh -o StrictHostKeyChecking=accept-new root@174.138.183.153 'set -euo pipefail; /root/.local/bin/rakkib --help | sed -n "1,220p"'
 
 Validation must follow the service-targeted bare-metal flow:
 - `curl -fsSL https://raw.githubusercontent.com/FayaaDev/Rakkib/main/install.sh | bash`
@@ -56,5 +69,5 @@ Do not hand-roll the workflow; the skill is the contract for registry fields, te
 
 ## How To Handle User Requests
 
-- If the user gives a service name: locate it in `batch1.md`, `batchx.md`, or `MoreServices/*.md`.
+- If the user gives a service name: locate it in `services_checklist.md`, if it’s not there, add it.
 - If the name is missing/ambiguous: ask for the upstream repo URL and whether it needs Postgres.
