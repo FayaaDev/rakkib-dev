@@ -1362,6 +1362,20 @@
   padding: clamp(24px, 5vw, 56px);
 }
 
+.setup-deployment-summary {
+  display: grid;
+  gap: 22px;
+  padding: clamp(24px, 5vw, 44px);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 24px;
+  background: linear-gradient(145deg, rgba(48, 44, 44, 0.94), rgba(39, 35, 35, 0.92));
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.18);
+}
+
+.setup-deployment-summary .setup-summary-grid {
+  margin-top: 0;
+}
+
 .setup-launch-visual,
 .setup-progress-visual {
   display: grid;

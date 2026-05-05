@@ -221,6 +221,24 @@ function sanitizeBackendValue(phase: number, fieldId: string, value: unknown) {
   return value
 }
 
+function hasVisibleBackendValue(phase: number, field: SetupQuestionField, answer: unknown) {
+  const value = sanitizeBackendValue(phase, field.id, answer)
+
+  if (value === null || value === undefined || value === '') {
+    return false
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0
+  }
+
+  if (typeof value === 'object') {
+    return Object.keys(value).length > 0
+  }
+
+  return true
+}
+
 function renderBackendField(phase: number, field: SetupQuestionField, answer: unknown) {
   const value = sanitizeBackendValue(phase, field.id, answer)
 
@@ -355,6 +373,7 @@ export function SetupPhase() {
     return true
   })
   const readOnlyFields = payload.fields.filter((field) => field.repeat_for || ['derived', 'summary'].includes(field.type))
+  const visibleReadOnlyFields = readOnlyFields.filter((field) => hasVisibleBackendValue(payload.phase, field, payload.answers[field.id]))
   const selectedValue = draft.optional_services
   const transferSelected = Array.isArray(selectedValue) && selectedValue.some((item) => String(item) === 'transfer')
   const hasServiceCatalog = Boolean(
@@ -440,7 +459,7 @@ export function SetupPhase() {
         </aside>
 
         <div className="setup-stage-work">
-          {readOnlyFields.length > 0 ? (
+          {visibleReadOnlyFields.length > 0 ? (
             <article className="setup-field-card setup-phase-meta">
               <div className="setup-field-header">
                 <div>
@@ -450,7 +469,35 @@ export function SetupPhase() {
               </div>
 
               <div className="setup-backend-state-list">
-                {readOnlyFields.map((field) => renderBackendField(payload.phase, field, payload.answers[field.id]))}
+                {visibleReadOnlyFields.map((field) => renderBackendField(payload.phase, field, payload.answers[field.id]))}
+              </div>
+            </article>
+          ) : null}
+
+          {payload.phase === 4 ? (
+            <article className="setup-field-card setup-cloudflare-card">
+              <div className="setup-field-header">
+                <div>
+                  <p className="section-label">Cloudflare Handoff</p>
+                  <h2>No choices needed here</h2>
+                </div>
+              </div>
+              <p className="hero-text">
+                Rakkib will use a browser approval link during deployment, create a fresh tunnel, and route your selected services through Cloudflare.
+              </p>
+              <div className="setup-summary-grid">
+                <div className="setup-summary-item">
+                  <span>Approval</span>
+                  <strong>Open Cloudflare login when prompted</strong>
+                </div>
+                <div className="setup-summary-item">
+                  <span>Tunnel</span>
+                  <strong>Create a new secure tunnel</strong>
+                </div>
+                <div className="setup-summary-item">
+                  <span>Service URLs</span>
+                  <strong>Use each selected subdomain</strong>
+                </div>
               </div>
             </article>
           ) : null}

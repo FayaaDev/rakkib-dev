@@ -1,13 +1,63 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ApiError, fetchSetupRunStatus, startSetupRun } from '../api/client'
-import type { SetupRunStatus } from '../api/types'
+import { ApiError, fetchSetupPhase, fetchSetupRunStatus, startSetupRun, submitSetupPhase } from '../api/client'
+import type { SetupPhasePayload, SetupRunStatus } from '../api/types'
+import { renderFieldValue } from '../components/FieldRenderer'
 import { SetupShell } from '../components/SetupShell'
 
 type ConfirmState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; run: SetupRunStatus }
+  | { status: 'ready'; run: SetupRunStatus; summary: SetupPhasePayload }
+
+const summaryLabels: Record<string, string> = {
+  platform: 'Platform',
+  arch: 'Architecture',
+  privilege_mode: 'System access',
+  privilege_strategy: 'Privilege handling',
+  data_root: 'Data location',
+  server_name: 'Server name',
+  domain: 'Domain',
+  admin_user: 'Admin user',
+  admin_email: 'Admin email',
+  lan_ip: 'LAN address',
+  tz: 'Timezone',
+  foundation_services: 'Foundation services',
+  selected_services: 'Extra services',
+  host_addons: 'Host add-ons',
+  subdomains: 'Service addresses',
+  'cloudflare.zone_in_cloudflare': 'Cloudflare zone',
+  'cloudflare.auth_method': 'Cloudflare approval',
+  'cloudflare.headless': 'Remote approval',
+  'cloudflare.tunnel_strategy': 'Tunnel plan',
+  'secrets.mode': 'Secret strategy',
+}
+
+function friendlySummaryLabel(key: string) {
+  return summaryLabels[key] ?? key.replace(/[._-]+/g, ' ').replace(/\b\w/g, (match) => match.toUpperCase())
+}
+
+function deploymentSummaryEntries(summary: SetupPhasePayload) {
+  const summaryField = summary.fields.find((field) => field.id === 'deployment_summary')
+  const value = summaryField ? summary.answers[summaryField.id] : null
+
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return []
+  }
+
+  return Object.entries(value as Record<string, unknown>).filter(([, entryValue]) => {
+    if (entryValue === null || entryValue === undefined || entryValue === '') {
+      return false
+    }
+    if (Array.isArray(entryValue)) {
+      return entryValue.length > 0
+    }
+    if (typeof entryValue === 'object') {
+      return Object.keys(entryValue).length > 0
+    }
+    return true
+  })
+}
 
 export function SetupConfirm() {
   const navigate = useNavigate()
@@ -20,12 +70,12 @@ export function SetupConfirm() {
 
     void (async () => {
       try {
-        const run = await fetchSetupRunStatus()
+        const [run, summary] = await Promise.all([fetchSetupRunStatus(), fetchSetupPhase(6)])
         if (cancelled) {
           return
         }
 
-        setState({ status: 'ready', run })
+        setState({ status: 'ready', run, summary })
       } catch (error) {
         if (cancelled) {
           return
@@ -56,14 +106,30 @@ export function SetupConfirm() {
     }
   }
 
+  async function handleProceed() {
+    setIsStarting(true)
+    setActionError(null)
+
+    try {
+      await submitSetupPhase(6, { answers: { confirmed: true } })
+      await startSetupRun()
+      navigate('/setup/run')
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Unable to proceed with deployment right now.'
+      setActionError(message)
+    } finally {
+      setIsStarting(false)
+    }
+  }
+
   function renderContent() {
     if (state.status === 'loading') {
       return (
         <section className="placeholder-card bridge-card onboarding-loader" aria-labelledby="setup-confirm-title">
           <img className="setup-loader-logo" src="/logo.png" alt="" width="56" height="56" />
-          <p className="section-label">Launch</p>
-          <h2 id="setup-confirm-title">Preparing your launch</h2>
-          <p className="hero-text">Checking whether your saved choices are ready.</p>
+          <p className="section-label">Deployment Summary</p>
+          <h2 id="setup-confirm-title">Preparing your summary</h2>
+          <p className="hero-text">Loading your saved configuration and deployment state.</p>
           <div className="bridge-spinner" aria-hidden="true" />
         </section>
       )
@@ -72,26 +138,40 @@ export function SetupConfirm() {
     if (state.status === 'error') {
       return (
         <section className="placeholder-card" aria-labelledby="setup-confirm-title">
-          <p className="section-label">Launch</p>
-          <h2 id="setup-confirm-title">Unable to prepare launch</h2>
+          <p className="section-label">Deployment Summary</p>
+          <h2 id="setup-confirm-title">Unable to prepare summary</h2>
           <p className="hero-text">{state.message}</p>
         </section>
       )
     }
 
     const run = state.run
+    const entries = deploymentSummaryEntries(state.summary)
 
     if (!run.confirmed) {
       return (
-        <section className="placeholder-card setup-launch-card" aria-labelledby="setup-confirm-title">
-          <p className="section-label">Launch</p>
-          <h2 id="setup-confirm-title">One last approval is needed</h2>
-          <p className="hero-text">
-            Revisit the final review, approve the configuration, then return here to start setup.
-          </p>
+        <section className="setup-deployment-summary" aria-labelledby="setup-confirm-title">
+          <div className="setup-field-header">
+            <div>
+              <p className="section-label">Deployment Summary</p>
+              <h2 id="setup-confirm-title">Proceed with deployment using the above configuration?</h2>
+            </div>
+          </div>
+          <div className="setup-summary-grid">
+            {entries.map(([key, value]) => (
+              <div key={key} className="setup-summary-item">
+                <span>{friendlySummaryLabel(key)}</span>
+                <strong>{renderFieldValue(value)}</strong>
+              </div>
+            ))}
+          </div>
+          {actionError ? <p className="setup-submit-error">{actionError}</p> : null}
           <div className="setup-run-actions">
-            <button type="button" className="bridge-button bridge-button-primary" onClick={() => navigate('/setup/phase/6')}>
-              Open final review
+            <button type="button" className="bridge-button" onClick={() => navigate('/setup/phase/6')}>
+              Edit summary
+            </button>
+            <button type="button" className="bridge-button bridge-button-primary" onClick={handleProceed} disabled={isStarting}>
+              {isStarting ? 'Starting deployment...' : 'Proceed with deployment'}
             </button>
           </div>
         </section>
@@ -124,7 +204,7 @@ export function SetupConfirm() {
           </div>
         </div>
         <div className="setup-launch-copy">
-          <p className="section-label">Launch</p>
+          <p className="section-label">Deployment Summary</p>
           <h2 id="setup-confirm-title">{title}</h2>
           <p className="hero-text">{description}</p>
           {actionError ? <p className="setup-submit-error">{actionError}</p> : null}
@@ -147,8 +227,8 @@ export function SetupConfirm() {
 
   return (
     <SetupShell
-      title="Launch Setup"
-      description="Start the browser-guided install and follow progress without terminal output."
+      title="Deployment Summary"
+      description="Review the saved configuration and decide whether to proceed with deployment."
       currentPhase={7}
     >
       {renderContent()}

@@ -7,7 +7,8 @@ const phaseLabels: Record<number, string> = {
   3: 'Services',
   4: 'Cloudflare',
   5: 'Secrets',
-  6: 'Confirm',
+  6: 'Review',
+  7: 'Deployment summary',
 }
 
 const phaseHints: Record<number, string> = {
@@ -16,8 +17,8 @@ const phaseHints: Record<number, string> = {
   3: 'Pick apps',
   4: 'Public access',
   5: 'Passwords',
-  6: 'Review',
-  7: 'Launch',
+  6: 'Saved choices',
+  7: 'Final decision',
 }
 
 type StepTimelineProps = {
