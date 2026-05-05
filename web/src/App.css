@@ -501,8 +501,27 @@
   font-size: 14px;
 }
 
+.setup-backend-state-list {
+  display: grid;
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.setup-backend-state-row {
+  display: grid;
+  gap: 8px;
+}
+
+.setup-backend-state-row strong {
+  display: block;
+}
+
 .setup-field-value {
   margin-top: 16px;
+}
+
+.setup-backend-state-row .setup-field-value {
+  margin-top: 0;
 }
 
 .setup-empty-value {
@@ -570,14 +589,45 @@
 }
 
 .setup-service-item {
+  width: 100%;
+  display: grid;
+  gap: 14px;
   padding: 14px 16px;
   border: 1px solid var(--color-border);
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.02);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .setup-service-item.is-selected {
   border-color: var(--color-accent);
+}
+
+.setup-service-item:hover {
+  border-color: var(--color-border-strong);
+}
+
+.setup-service-item.is-selected:hover {
+  border-color: var(--color-accent);
+}
+
+.setup-service-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.setup-service-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 999px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
 }
 
 .setup-phase-form {

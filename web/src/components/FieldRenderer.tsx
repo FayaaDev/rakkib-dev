@@ -6,7 +6,15 @@ type FieldRendererProps = {
   answer: unknown
 }
 
-function renderValue(value: unknown): ReactNode {
+function humanizeLabel(value: string) {
+  return value
+    .replace(/[._-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (match) => match.toUpperCase())
+}
+
+export function renderFieldValue(value: unknown): ReactNode {
   if (value === null || value === undefined || value === '') {
     return <span className="setup-empty-value">Not set yet</span>
   }
@@ -34,8 +42,8 @@ function renderValue(value: unknown): ReactNode {
       <dl className="setup-value-map">
         {Object.entries(value as Record<string, unknown>).map(([key, entryValue]) => (
           <div key={key} className="setup-value-map-row">
-            <dt>{key}</dt>
-            <dd>{renderValue(entryValue)}</dd>
+            <dt>{humanizeLabel(key)}</dt>
+            <dd>{renderFieldValue(entryValue)}</dd>
           </div>
         ))}
       </dl>
@@ -45,8 +53,8 @@ function renderValue(value: unknown): ReactNode {
   return String(value)
 }
 
-function fieldLabel(field: SetupQuestionField) {
-  return field.prompt?.trim() || field.prompt_template?.trim() || field.id
+export function fieldLabel(field: SetupQuestionField) {
+  return field.prompt?.trim() || field.prompt_template?.trim() || humanizeLabel(field.id)
 }
 
 export function FieldRenderer({ field, answer }: FieldRendererProps) {
@@ -59,10 +67,7 @@ export function FieldRenderer({ field, answer }: FieldRendererProps) {
         </div>
         {field.required === false ? <span className="badge">Optional</span> : null}
       </div>
-
-      {field.records.length > 0 ? <p className="setup-field-records">Records: {field.records.join(', ')}</p> : null}
-
-      <div className="setup-field-value">{renderValue(answer)}</div>
+      <div className="setup-field-value">{renderFieldValue(answer)}</div>
     </article>
   )
 }

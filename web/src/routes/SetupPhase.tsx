@@ -2,9 +2,9 @@ import type { FormEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError, fetchSetupPhase, submitSetupPhase } from '../api/client'
-import type { SetupPhasePayload, SetupServiceCatalogItem } from '../api/types'
+import type { SetupPhasePayload, SetupQuestionField, SetupServiceCatalogItem } from '../api/types'
 import { FieldEditor } from '../components/FieldEditor'
-import { FieldRenderer } from '../components/FieldRenderer'
+import { fieldLabel, renderFieldValue } from '../components/FieldRenderer'
 import { SetupLinkQr } from '../components/SetupLinkQr'
 import { SetupShell } from '../components/SetupShell'
 
@@ -40,7 +40,20 @@ type PhaseState =
   | { status: 'error'; message: string }
   | { status: 'ready'; payload: SetupPhasePayload }
 
-function renderCatalogSection(title: string, items: SetupServiceCatalogItem[] | undefined, selected: Set<string>) {
+type CatalogFieldKey = 'foundation_services' | 'optional_services' | 'host_addons'
+
+function formatServiceSubdomain(item: SetupServiceCatalogItem) {
+  return item.default_subdomain ? `Subdomain: ${item.default_subdomain}` : null
+}
+
+function renderCatalogSection(
+  title: string,
+  fieldId: CatalogFieldKey,
+  items: SetupServiceCatalogItem[] | undefined,
+  selected: Set<string>,
+  error: string | undefined,
+  onToggle: (fieldId: CatalogFieldKey, slug: string) => void,
+) {
   if (!items || items.length === 0) {
     return null
   }
@@ -56,16 +69,54 @@ function renderCatalogSection(title: string, items: SetupServiceCatalogItem[] | 
 
       <ul className="setup-service-list">
         {items.map((item) => (
-          <li key={item.slug} className={`setup-service-item${selected.has(item.slug) ? ' is-selected' : ''}`}>
-            <div>
+          <li key={item.slug}>
+            <button
+              type="button"
+              className={`setup-service-item${selected.has(item.slug) ? ' is-selected' : ''}`}
+              onClick={() => onToggle(fieldId, item.slug)}
+            >
               <strong>{item.label ?? item.slug}</strong>
-              <span>{item.slug}</span>
-            </div>
-            <span className="badge">{selected.has(item.slug) ? 'Selected' : 'Available'}</span>
+              <div className="setup-service-tags">
+                <span className="badge">{selected.has(item.slug) ? 'Selected' : 'Available'}</span>
+                {formatServiceSubdomain(item) ? <span className="setup-service-tag">{formatServiceSubdomain(item)}</span> : null}
+              </div>
+            </button>
           </li>
         ))}
       </ul>
+
+      {error ? <p className="setup-field-error">{error}</p> : null}
     </article>
+  )
+}
+
+function sanitizeBackendValue(phase: number, fieldId: string, value: unknown) {
+  if (phase === 4 && fieldId === 'cloudflare_defaults' && value && typeof value === 'object' && !Array.isArray(value)) {
+    const source = value as Record<string, unknown>
+    const visibleEntries = Object.entries(source).filter(([key, entryValue]) => {
+      if (entryValue === null || entryValue === undefined || entryValue === '') {
+        return false
+      }
+
+      return ![
+        'cloudflare.tunnel_uuid',
+        'cloudflare.tunnel_creds_host_path',
+        'cloudflare.tunnel_creds_container_path',
+      ].includes(key)
+    })
+
+    return Object.fromEntries(visibleEntries)
+  }
+
+  return value
+}
+
+function renderBackendField(phase: number, field: SetupQuestionField, answer: unknown) {
+  return (
+    <div key={field.id} className="setup-backend-state-row">
+      <strong>{fieldLabel(field)}</strong>
+      <div className="setup-field-value">{renderFieldValue(sanitizeBackendValue(phase, field.id, answer))}</div>
+    </div>
   )
 }
 
@@ -150,6 +201,7 @@ export function SetupPhase() {
   const foundation = draft.foundation_services ?? payload.answers.foundation_services
   const selected = draft.optional_services ?? payload.answers.optional_services
   const hostAddons = draft.host_addons ?? payload.answers.host_addons
+  const hasCatalogSelection = payload.phase === 3
 
   if (Array.isArray(foundation)) {
     foundation.forEach((item) => selectedServices.add(String(item)))
@@ -161,10 +213,35 @@ export function SetupPhase() {
     hostAddons.forEach((item) => selectedServices.add(String(item)))
   }
 
-  const editableFields = payload.fields.filter((field) => !field.repeat_for && !['derived', 'summary'].includes(field.type))
+  const editableFields = payload.fields.filter((field) => {
+    if (field.repeat_for || ['derived', 'summary'].includes(field.type)) {
+      return false
+    }
+
+    if (hasCatalogSelection && ['foundation_services', 'optional_services', 'host_addons'].includes(field.id)) {
+      return false
+    }
+
+    return true
+  })
   const readOnlyFields = payload.fields.filter((field) => field.repeat_for || ['derived', 'summary'].includes(field.type))
   const selectedValue = draft.optional_services
   const transferSelected = Array.isArray(selectedValue) && selectedValue.some((item) => String(item) === 'transfer')
+
+  function toggleCatalogSelection(fieldId: CatalogFieldKey, slug: string) {
+    setDraft((current) => {
+      const existing = current[fieldId]
+      const selectedValues = Array.isArray(existing)
+        ? existing.map((item) => String(item))
+        : []
+
+      const nextValues = selectedValues.includes(slug)
+        ? selectedValues.filter((item) => item !== slug)
+        : [...selectedValues, slug]
+
+      return { ...current, [fieldId]: nextValues }
+    })
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -217,23 +294,35 @@ export function SetupPhase() {
             <span className="badge">{payload.complete ? 'Complete' : 'In progress'}</span>
           </div>
 
-          <div className="setup-meta-grid">
-            <div>
-              <strong>Reads</strong>
-              <span>{payload.reads_state.length > 0 ? payload.reads_state.join(', ') : 'None'}</span>
-            </div>
-            <div>
-              <strong>Writes</strong>
-              <span>{payload.writes_state.length > 0 ? payload.writes_state.join(', ') : 'None'}</span>
-            </div>
-          </div>
+          {readOnlyFields.length > 0 ? <div className="setup-backend-state-list">{readOnlyFields.map((field) => renderBackendField(payload.phase, field, payload.answers[field.id]))}</div> : null}
         </article>
 
         {payload.service_catalog.foundation_bundle || payload.service_catalog.optional_services || payload.service_catalog.host_addons ? (
           <div className="setup-phase-stack">
-            {renderCatalogSection('Foundation Bundle', payload.service_catalog.foundation_bundle, selectedServices)}
-            {renderCatalogSection('Optional Services', payload.service_catalog.optional_services, selectedServices)}
-            {renderCatalogSection('Host Addons', payload.service_catalog.host_addons, selectedServices)}
+            {renderCatalogSection(
+              'Foundation Bundle',
+              'foundation_services',
+              payload.service_catalog.foundation_bundle,
+              selectedServices,
+              fieldErrors.foundation_services,
+              toggleCatalogSelection,
+            )}
+            {renderCatalogSection(
+              'Optional Services',
+              'optional_services',
+              payload.service_catalog.optional_services,
+              selectedServices,
+              fieldErrors.optional_services,
+              toggleCatalogSelection,
+            )}
+            {renderCatalogSection(
+              'Host Addons',
+              'host_addons',
+              payload.service_catalog.host_addons,
+              selectedServices,
+              fieldErrors.host_addons,
+              toggleCatalogSelection,
+            )}
           </div>
         ) : null}
 
@@ -272,11 +361,6 @@ export function SetupPhase() {
               </label>
             </article>
           ) : null}
-
-          {readOnlyFields.map((field) => (
-            <FieldRenderer key={field.id} field={field} answer={payload.answers[field.id]} />
-          ))}
-
           <div className="setup-phase-actions">
             <button type="submit" className="bridge-button" disabled={isSubmitting}>
               {isSubmitting ? 'Saving...' : payload.phase === 6 ? 'Save confirmation' : 'Save and continue'}
