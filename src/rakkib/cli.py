@@ -1056,7 +1056,8 @@ def auth(ctx: click.Context) -> None:
 @click.option("--token", "startup_token", default="", help="Explicit setup token to require.")
 @click.option("--no-token", is_flag=True, help="Disable token auth for this web session.")
 @click.option("--no-open", is_flag=True, help="Do not attempt to open a browser automatically.")
-def web(lan: bool, host: str, port: int, startup_token: str, no_token: bool, no_open: bool) -> None:
+@click.pass_context
+def web(ctx: click.Context, lan: bool, host: str, port: int, startup_token: str, no_token: bool, no_open: bool) -> None:
     """Run the local browser UI and token bootstrap server."""
     import uvicorn
 
