@@ -207,6 +207,9 @@ def _build_subdomain_defaults(items: list[dict[str, Any]], state: State) -> None
         if slug not in selected_slugs:
             continue
         default_sub = item.get("default_subdomain", slug)
+        # Some catalog entries represent non-HTTP tools and intentionally have no subdomain.
+        if not default_sub:
+            continue
         state.set(f"subdomains.{slug}", default_sub)
         state.set(subdomain_placeholder_key(slug), default_sub)
 
