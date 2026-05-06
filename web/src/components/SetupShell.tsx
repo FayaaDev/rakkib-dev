@@ -50,7 +50,7 @@ export function SetupShell({ title, description, currentPhase, children }: Setup
 
   if (state.status === 'loading') {
     return (
-      <main className="shell setup-shell-frame setup-onboarding">
+      <main className="shell setup-shell-frame setup-onboarding setup-loading-frame">
         <p className="simple-loading" role="status">Loading...</p>
       </main>
     )

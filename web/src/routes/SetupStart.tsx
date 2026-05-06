@@ -51,7 +51,7 @@ export function SetupStart() {
 
   if (state.status === 'loading') {
     return (
-      <main className="shell route-placeholder">
+      <main className="shell route-placeholder setup-loading-frame">
         <p className="simple-loading" role="status">Loading...</p>
       </main>
     )

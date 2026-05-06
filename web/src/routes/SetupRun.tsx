@@ -184,7 +184,9 @@ export function SetupRun() {
   function renderContent() {
     if (state.status === 'loading') {
       return (
-        <p className="simple-loading" role="status">Loading...</p>
+        <section className="setup-loading-state" aria-live="polite">
+          <p className="simple-loading" role="status">Loading...</p>
+        </section>
       )
     }
 

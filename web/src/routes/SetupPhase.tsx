@@ -337,7 +337,9 @@ export function SetupPhase() {
   if (state.status === 'loading') {
     return (
       <SetupShell title={page.title} description={page.description} currentPhase={phaseNumber}>
-        <p className="simple-loading" role="status">Loading...</p>
+        <section className="setup-loading-state" aria-live="polite">
+          <p className="simple-loading" role="status">Loading...</p>
+        </section>
       </SetupShell>
     )
   }
