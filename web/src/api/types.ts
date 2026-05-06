@@ -94,3 +94,21 @@ export type SetupRunStatus = {
   log_tail: string[]
   attention: { type: 'cloudflare_auth'; url: string } | null
 }
+
+export type PublicService = {
+  id: string
+  required: boolean
+  optional: boolean
+  foundation: boolean
+  host_service: boolean
+  default_subdomain: string | null
+  default_port: number | null
+  category: string
+  name: string
+  description: string
+  icon: string | null
+}
+
+export type PublicServicesResponse = {
+  services: PublicService[]
+}

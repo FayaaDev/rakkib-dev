@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
+import { fetchPublicServices } from '../api/client'
+import type { PublicService } from '../api/types'
 import { LanguageToggle } from '../components/LanguageToggle'
 import { useI18n } from '../i18n/useI18n'
 import { SetupBridge } from './SetupBridge'
@@ -7,135 +9,78 @@ import { SetupBridge } from './SetupBridge'
 const installCommand = 'curl -fsSL https://raw.githubusercontent.com/FayaaDev/Rakkib/main/install.sh | bash'
 const repoUrl = 'https://github.com/FayaaDev/Rakkib'
 
-type Service = {
-  name: string
-  icon: 'proxy' | 'cloud' | 'database' | 'table' | 'workflow' | 'photos' | 'transfer' | 'claw' | 'hermes' | 'monitor' | 'docker'
+type PublicServiceItem = PublicService
+
+type ServicesState =
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'ready'; services: PublicServiceItem[] }
+
+function serviceInitials(item: PublicServiceItem) {
+  const label = item.name ?? item.id
+  const words = label.replace(/\.[a-z]+$/i, '').split(/\s+|-/).filter(Boolean)
+  const initials = words.length > 1 ? `${words[0][0]}${words[1][0]}` : label.slice(0, 2)
+  return initials.toUpperCase()
 }
 
-const services: Service[] = [
-  { name: 'Caddy', icon: 'proxy' },
-  { name: 'Cloudflared', icon: 'cloud' },
-  { name: 'PostgreSQL', icon: 'database' },
-  { name: 'NocoDB', icon: 'table' },
-  { name: 'Homepage', icon: 'monitor' },
-  { name: 'Uptime Kuma', icon: 'monitor' },
-  { name: 'Dockge', icon: 'docker' },
-  { name: 'n8n', icon: 'workflow' },
-  { name: 'Immich', icon: 'photos' },
-  { name: 'transfer.sh', icon: 'transfer' },
-  { name: 'OpenClaw', icon: 'claw' },
-  { name: 'Hermes', icon: 'hermes' },
-]
+function serviceTone(slug: string) {
+  const tones = ['blue', 'green', 'amber', 'rose', 'violet', 'cyan']
+  const index = Array.from(slug).reduce((total, char) => total + char.charCodeAt(0), 0) % tones.length
+  return tones[index]
+}
 
-function ServiceIcon({ icon }: { icon: Service['icon'] }) {
-  if (icon === 'cloud') {
-    return (
-      <svg viewBox="0 0 32 32" aria-hidden="true">
-        <path d="M10 22h13a5 5 0 0 0 0-10 8 8 0 0 0-15-2 6 6 0 0 0 2 12Z" />
-      </svg>
-    )
-  }
-
-  if (icon === 'database') {
-    return (
-      <svg viewBox="0 0 32 32" aria-hidden="true">
-        <ellipse cx="16" cy="8" rx="9" ry="4" />
-        <path d="M7 8v16c0 2 4 4 9 4s9-2 9-4V8" />
-        <path d="M7 16c0 2 4 4 9 4s9-2 9-4" />
-      </svg>
-    )
-  }
-
-  if (icon === 'table') {
-    return (
-      <svg viewBox="0 0 32 32" aria-hidden="true">
-        <rect x="6" y="7" width="20" height="18" />
-        <path d="M6 13h20M13 7v18M20 7v18" />
-      </svg>
-    )
-  }
-
-  if (icon === 'workflow') {
-    return (
-      <svg viewBox="0 0 32 32" aria-hidden="true">
-        <circle cx="8" cy="9" r="3" />
-        <circle cx="24" cy="9" r="3" />
-        <circle cx="16" cy="23" r="3" />
-        <path d="M11 9h10M10 12l4 8M22 12l-4 8" />
-      </svg>
-    )
-  }
-
-  if (icon === 'claw') {
-    return (
-      <svg viewBox="0 0 32 32" aria-hidden="true">
-        <path d="M8 25c4-3 5-8 5-17" />
-        <path d="M16 25c2-4 3-9 2-18" />
-        <path d="M23 25c-1-4-1-9 1-17" />
-        <path d="M7 25h18" />
-      </svg>
-    )
-  }
-
-  if (icon === 'hermes') {
-    return (
-      <svg viewBox="0 0 32 32" aria-hidden="true">
-        <path d="M16 4l8 5v8c0 5-3 9-8 11-5-2-8-6-8-11V9l8-5Z" />
-        <path d="M11 16h10" />
-        <path d="M16 10v12" />
-        <path d="M12 8c1 2 7 2 8 0" />
-      </svg>
-    )
-  }
-
-  if (icon === 'photos') {
-    return (
-      <svg viewBox="0 0 32 32" aria-hidden="true">
-        <rect x="5" y="8" width="22" height="17" rx="2" />
-        <circle cx="12" cy="14" r="3" />
-        <path d="M8 23l6-6 4 4 3-3 4 5" />
-      </svg>
-    )
-  }
-
-  if (icon === 'transfer') {
-    return (
-      <svg viewBox="0 0 32 32" aria-hidden="true">
-        <path d="M16 5v15" />
-        <path d="M10 11l6-6 6 6" />
-        <rect x="6" y="20" width="20" height="7" rx="2" />
-        <path d="M21 24h1" />
-      </svg>
-    )
-  }
-
-  if (icon === 'monitor') {
-    return (
-      <svg viewBox="0 0 32 32" aria-hidden="true">
-        <rect x="4" y="6" width="24" height="16" rx="2" />
-        <path d="M12 26h8M16 22v4" />
-      </svg>
-    )
-  }
-
-  if (icon === 'docker') {
-    return (
-      <svg viewBox="0 0 32 32" aria-hidden="true">
-        <rect x="8" y="4" width="6" height="6" rx="1" />
-        <rect x="8" y="12" width="6" height="6" rx="1" />
-        <rect x="18" y="12" width="6" height="6" rx="1" />
-        <rect x="18" y="20" width="6" height="6" rx="1" />
-        <path d="M14 7h4M14 15h4M20 15v5" />
-      </svg>
-    )
-  }
-
+function ServiceMark({ item }: { item: PublicServiceItem }) {
   return (
-    <svg viewBox="0 0 32 32" aria-hidden="true">
-      <rect x="6" y="8" width="20" height="16" />
-      <path d="M10 13h7M10 18h12" />
-    </svg>
+    <span className={`setup-service-mark tone-${serviceTone(item.id)}`} aria-hidden="true">
+      <span>{serviceInitials(item)}</span>
+    </span>
   )
+}
+
+function formatServiceSubdomain(item: PublicServiceItem) {
+  return item.default_subdomain ? `${item.default_subdomain}.your domain` : 'Local or host tool'
+}
+
+function catalogSearchText(item: PublicServiceItem) {
+  return [
+    item.name,
+    item.id,
+    item.category,
+    item.default_subdomain,
+    item.description,
+    item.required ? 'required core' : null,
+    item.foundation ? 'foundation' : null,
+    item.host_service ? 'host addon' : null,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
+function serviceStatusLabel(item: PublicServiceItem) {
+  if (item.required) {
+    return 'Required'
+  }
+  if (item.foundation) {
+    return 'Foundation'
+  }
+  return 'Optional'
+}
+
+function serviceDetail(item: PublicServiceItem) {
+  if (item.description) {
+    return item.description
+  }
+
+  if (item.required) {
+    return 'Always installed'
+  }
+
+  if (item.host_service) {
+    return 'Runs directly on the host'
+  }
+
+  return 'Optional self-hosted app'
 }
 
 function GitHubIcon() {
@@ -148,14 +93,40 @@ function GitHubIcon() {
 
 export function Landing() {
   const location = useLocation()
-  const { t, ts } = useI18n()
+  const { t } = useI18n()
   const [copied, setCopied] = useState(false)
+  const [serviceSearch, setServiceSearch] = useState('')
+  const [servicesState, setServicesState] = useState<ServicesState>({ status: 'loading' })
 
   const params = new URLSearchParams(location.search)
 
   if (params.has('token')) {
     return <SetupBridge />
   }
+
+  useEffect(() => {
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const payload = await fetchPublicServices()
+        if (cancelled) {
+          return
+        }
+        setServicesState({ status: 'ready', services: payload.services })
+      } catch (error) {
+        if (cancelled) {
+          return
+        }
+        const message = error instanceof Error ? error.message : 'Unable to load services right now.'
+        setServicesState({ status: 'error', message })
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   async function copyInstallCommand() {
     await navigator.clipboard.writeText(installCommand)
@@ -198,19 +169,96 @@ export function Landing() {
           <p className="section-label">{t('sectionLabel')}</p>
           <h2 id="services-title">{t('servicesTitle')}</h2>
 
-          <div className="service-grid" role="list">
-            {services.map((service) => (
-              <article className="service-card" key={service.name} role="listitem">
-                <div className="service-icon">
-                  <ServiceIcon icon={service.icon} />
-                </div>
-                <div>
-                  <h3>{service.name}</h3>
-                  <p>{ts(service.name)}</p>
-                </div>
-              </article>
-            ))}
-          </div>
+          {servicesState.status === 'loading' ? (
+            <p className="simple-loading" role="status">Loading...</p>
+          ) : null}
+
+          {servicesState.status === 'error' ? (
+            <article className="setup-service-section setup-service-empty">
+              <p className="section-label">Services</p>
+              <h2>Unable to load services</h2>
+              <p className="hero-text">{servicesState.message}</p>
+            </article>
+          ) : null}
+
+          {servicesState.status === 'ready' ? (() => {
+            const allItems = servicesState.services
+            const serviceSearchQuery = serviceSearch.trim().toLowerCase()
+            const filteredItems = serviceSearchQuery
+              ? allItems.filter((item) => catalogSearchText(item).includes(serviceSearchQuery))
+              : allItems
+
+            const serviceCategories = Array.from(
+              filteredItems.reduce((groups, item) => {
+                const category = item.category?.trim() || 'Other'
+                groups.set(category, [...(groups.get(category) ?? []), item])
+                return groups
+              }, new Map<string, PublicServiceItem[]>()),
+            )
+
+            return (
+              <div className="setup-phase-stack setup-service-catalog">
+                <article className="setup-service-search-card">
+                  <div>
+                    <p className="section-label">Service Library</p>
+                    <h2>Search by service or category</h2>
+                  </div>
+                  <input
+                    className="setup-input setup-service-search"
+                    type="search"
+                    value={serviceSearch}
+                    onChange={(event) => setServiceSearch(event.target.value)}
+                    placeholder="Search services, categories, or subdomains"
+                    aria-label="Search services"
+                  />
+                  <p className="setup-field-help">
+                    Showing {filteredItems.length} of {allItems.length} services across {serviceCategories.length} categories.
+                  </p>
+                </article>
+
+                {serviceCategories.length > 0 ? (
+                  serviceCategories.map(([category, items]) => (
+                    <article className="setup-service-section" key={category}>
+                      <div className="setup-field-header">
+                        <div>
+                          <p className="section-label">{items.length} {items.length === 1 ? 'Service' : 'Services'}</p>
+                          <h2>{category}</h2>
+                        </div>
+                      </div>
+
+                      <div className="setup-service-list" role="list">
+                        {items.map((item) => (
+                          <article
+                            key={item.id}
+                            className="setup-service-item"
+                            role="listitem"
+                            style={{ cursor: 'default' }}
+                          >
+                            <ServiceMark item={item} />
+                            <span className="setup-service-copy">
+                              <strong>{item.name ?? item.id}</strong>
+                              <span>{serviceDetail(item)}</span>
+                            </span>
+                            <span className="setup-service-tags">
+                              <span className="setup-service-tag">{formatServiceSubdomain(item)}</span>
+                              <span className="setup-service-tag">{serviceStatusLabel(item)}</span>
+                              {item.host_service ? <span className="setup-service-tag">Host</span> : null}
+                            </span>
+                          </article>
+                        ))}
+                      </div>
+                    </article>
+                  ))
+                ) : (
+                  <article className="setup-service-section setup-service-empty">
+                    <p className="section-label">No Matches</p>
+                    <h2>No services match your search</h2>
+                    <p className="hero-text">Try another service name, category, or subdomain.</p>
+                  </article>
+                )}
+              </div>
+            )
+          })() : null}
         </section>
       </main>
     </div>

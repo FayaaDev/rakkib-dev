@@ -1,4 +1,12 @@
-import type { SessionStatus, SetupPhasePayload, SetupPhaseSubmitResult, SetupResume, SetupRunStatus, SetupState } from './types'
+import type {
+  PublicServicesResponse,
+  SessionStatus,
+  SetupPhasePayload,
+  SetupPhaseSubmitResult,
+  SetupResume,
+  SetupRunStatus,
+  SetupState,
+} from './types'
 
 const sessionBootstrapPath = '/api/session/bootstrap'
 const sessionBootstrapTokenPath = '/api/session/bootstrap-token'
@@ -137,6 +145,10 @@ export async function submitSetupPhase(
 
 export async function fetchSetupRunStatus(): Promise<SetupRunStatus> {
   return fetchApi<SetupRunStatus>('/api/run')
+}
+
+export async function fetchPublicServices(): Promise<PublicServicesResponse> {
+  return fetchApi<PublicServicesResponse>('/api/public/services')
 }
 
 export async function startSetupRun(): Promise<SetupRunStatus> {
