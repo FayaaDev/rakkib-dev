@@ -184,6 +184,23 @@ class TestWaitForHealthy:
 
     @patch("rakkib.steps.postgres.docker_run")
     @patch("rakkib.steps.postgres.time")
+    def test_falls_back_to_tcp_pg_isready(self, mock_time, mock_run):
+        mock_run.side_effect = [MagicMock(stdout="<no value>\n", returncode=0), MagicMock(returncode=0)]
+
+        postgres._wait_for_healthy()
+
+        assert mock_run.call_args_list[1].args[0] == [
+            "exec",
+            "postgres",
+            "pg_isready",
+            "-h",
+            "127.0.0.1",
+            "-U",
+            "postgres",
+        ]
+
+    @patch("rakkib.steps.postgres.docker_run")
+    @patch("rakkib.steps.postgres.time")
     def test_raises_on_timeout(self, mock_time, mock_run):
         mock_run.return_value = MagicMock(stdout="starting\n")
         with pytest.raises(RuntimeError, match="did not become healthy"):
@@ -211,6 +228,15 @@ def test_postgres_verify_success(tmp_path):
 
     assert result.ok is True
     assert result.step == "postgres"
+    assert mock_run.call_args_list[1].args[0] == [
+        "exec",
+        "postgres",
+        "pg_isready",
+        "-h",
+        "127.0.0.1",
+        "-U",
+        "postgres",
+    ]
 
 
 def test_postgres_verify_failure_container_missing(tmp_path):
@@ -258,3 +284,16 @@ def test_postgres_verify_failure_pg_isready(tmp_path):
 
     assert result.ok is False
     assert "pg_isready failed" in result.message
+
+
+def test_apply_sql_uses_tcp_psql():
+    with patch("rakkib.steps.postgres.docker_run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+
+        postgres._apply_sql("select 1;")
+
+    mock_run.assert_called_once_with(
+        ["exec", "-i", "postgres", "psql", "-h", "127.0.0.1", "-U", "postgres"],
+        input="select 1;",
+        check=False,
+    )
