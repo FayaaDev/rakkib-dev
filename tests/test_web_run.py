@@ -25,3 +25,11 @@ def test_setup_child_env_keeps_root_home_for_root(monkeypatch):
     env = web_run._setup_child_env()
 
     assert env["HOME"] == "/root"
+
+
+def test_web_run_manager_builds_service_sync_command(tmp_path):
+    manager = web_run.WebRunManager(tmp_path)
+
+    command = manager._command_for_operation(web_run.SERVICE_SYNC_OPERATION)
+
+    assert command[-1] == "sync-services"

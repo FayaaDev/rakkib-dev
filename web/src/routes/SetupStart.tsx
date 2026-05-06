@@ -40,7 +40,7 @@ export function SetupStart() {
             return
           }
 
-          if (resume.confirmed && resume.deployment_succeeded) {
+          if (resume.deployment_succeeded) {
             navigate('/setup/phase/3', { replace: true })
             return
           }

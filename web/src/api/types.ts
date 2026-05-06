@@ -88,6 +88,7 @@ export type SetupPhaseSubmitResult = {
 
 export type SetupRunStatus = {
   status: 'idle' | 'running' | 'succeeded' | 'failed'
+  operation: 'full_setup' | 'service_sync'
   message: string
   started_at: string | null
   finished_at: string | null

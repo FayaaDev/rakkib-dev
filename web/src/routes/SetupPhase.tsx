@@ -447,8 +447,7 @@ export function SetupPhase() {
       const result = await submitSetupPhase(payload.phase, { answers: draft })
 
       if (payload.phase === 3 && deploymentSucceeded && result.resume_phase >= 7) {
-        await submitSetupPhase(6, { answers: { confirmed: true } })
-        await startSetupRun()
+        await startSetupRun('service_sync')
         navigate('/setup/run')
         return
       }
@@ -598,10 +597,10 @@ export function SetupPhase() {
               <button type="submit" className="bridge-button bridge-button-primary" disabled={isSubmitting}>
                 {isSubmitting
                   ? payload.phase === 3 && deploymentSucceeded
-                    ? 'Starting deployment...'
+                    ? 'Syncing services...'
                     : 'Saving...'
                   : payload.phase === 3 && deploymentSucceeded
-                    ? 'Deploy selected services'
+                    ? 'Apply service changes'
                     : payload.phase === 6
                       ? 'Approve launch'
                       : 'Save and continue'}

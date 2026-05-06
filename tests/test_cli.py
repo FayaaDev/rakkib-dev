@@ -1151,3 +1151,42 @@ class TestCheckDocker:
             assert _check_docker() is False
 
         mock_fix_compose.assert_not_called()
+
+
+class TestPullSnapshots:
+    def test_pull_persists_deployed_selection_on_success(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+        state_file = repo_dir / ".fss-state.yaml"
+        state_file.write_text(
+            "confirmed: true\n"
+            "foundation_services:\n  - homepage\n"
+            "selected_services:\n  - n8n\n"
+        )
+
+        with (
+            patch("rakkib.cli._ensure_prereqs", return_value=True),
+            patch("rakkib.cli._run_steps", return_value=True),
+        ):
+            result = runner.invoke(cli, ["pull"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 0
+        state = State.load(state_file)
+        assert state.get("deployed.exists") is True
+        assert state.get("deployed.foundation_services") == ["homepage"]
+        assert state.get("deployed.selected_services") == ["n8n"]
+
+
+class TestSyncServices:
+    def test_sync_services_invokes_narrow_state_sync(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+        (repo_dir / ".fss-state.yaml").write_text("confirmed: true\n")
+
+        with patch("rakkib.cli._sync_services_to_state_selection", return_value=True) as mock_sync:
+            result = runner.invoke(cli, ["sync-services"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 0
+        mock_sync.assert_called_once()

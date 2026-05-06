@@ -4,37 +4,55 @@ import { ApiError, fetchSetupRunStatus, startSetupRun } from '../api/client'
 import type { SetupRunStatus } from '../api/types'
 import { SetupShell } from '../components/SetupShell'
 
-const progressSteps = ['Preparing machine', 'Creating secure access', 'Starting services', 'Final checks']
+function progressSteps(run: SetupRunStatus) {
+  if (run.operation === 'service_sync') {
+    return ['Loading saved selection', 'Applying service changes', 'Reloading routes', 'Finishing sync']
+  }
+  return ['Preparing machine', 'Creating secure access', 'Starting services', 'Final checks']
+}
 const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
 
 function statusTitle(run: SetupRunStatus) {
+  const isServiceSync = run.operation === 'service_sync'
   if (run.status === 'running') {
-    return 'Installing your server stack'
+    return isServiceSync ? 'Updating your services' : 'Installing your server stack'
   }
   if (run.status === 'succeeded') {
-    return 'Setup complete'
+    return isServiceSync ? 'Service update complete' : 'Setup complete'
   }
   if (run.status === 'failed') {
-    return 'Setup needs attention'
+    return isServiceSync ? 'Service update needs attention' : 'Setup needs attention'
   }
-  return 'Ready when you are'
+  return isServiceSync ? 'Ready to update services' : 'Ready when you are'
 }
 
 function statusCopy(run: SetupRunStatus) {
+  const isServiceSync = run.operation === 'service_sync'
   if (run.status === 'running') {
-    return 'Rakkib is preparing the machine, connecting the tunnel, and starting your selected services.'
+    return isServiceSync
+      ? 'Rakkib is syncing your saved service selection without re-running the full machine setup.'
+      : 'Rakkib is preparing the machine, connecting the tunnel, and starting your selected services.'
   }
   if (run.status === 'succeeded') {
-    return 'Your setup finished successfully. You can now open your services from their configured domains.'
+    return isServiceSync
+      ? 'Your service selection finished syncing. You can now open your updated services from their configured domains.'
+      : 'Your setup finished successfully. You can now open your services from their configured domains.'
   }
   if (run.status === 'failed') {
-    return 'Setup stopped before completion. Keep this session open and retry after checking your saved choices.'
+    return isServiceSync
+      ? 'Service syncing stopped before completion. Keep this session open and retry after checking your saved choices.'
+      : 'Setup stopped before completion. Keep this session open and retry after checking your saved choices.'
   }
-  return 'Start setup to let Rakkib prepare the host and launch your services.'
+  return isServiceSync
+    ? 'Apply your saved service changes when you are ready.'
+    : 'Start setup to let Rakkib prepare the host and launch your services.'
 }
 
 function activityTone(line: string) {
   const lower = line.toLowerCase()
+  if (lower.startsWith('wrn ') || lower.includes(' wrn ')) {
+    return 'attention'
+  }
   if (lower.includes('error') || lower.includes('failed') || lower.includes('exited with errors')) {
     return 'error'
   }
@@ -194,7 +212,8 @@ export function SetupRun() {
     setIsStarting(true)
 
     try {
-      const run = await startSetupRun()
+      const mode = state.status === 'ready' ? state.run.operation : 'full_setup'
+      const run = await startSetupRun(mode)
       setState({ status: 'ready', run })
       if (run.running) {
         setReloadToken((current) => current + 1)
@@ -232,7 +251,8 @@ export function SetupRun() {
 
     const run = state.run
 
-    const activeIndex = run.status === 'succeeded' ? progressSteps.length : run.status === 'running' ? 2 : run.status === 'failed' ? 1 : 0
+    const steps = progressSteps(run)
+    const activeIndex = run.status === 'succeeded' ? steps.length : run.status === 'running' ? 2 : run.status === 'failed' ? 1 : 0
     const lines = activityLines(run)
 
     return (
@@ -253,7 +273,7 @@ export function SetupRun() {
             <span className={`setup-status-pill is-${run.status}`}>{run.status}</span>
 
             <div className="setup-progress-steps" aria-label="Setup progress steps">
-              {progressSteps.map((step, index) => (
+              {steps.map((step, index) => (
                 <div key={step} className={`setup-progress-step${index < activeIndex ? ' is-done' : ''}${index === activeIndex && run.running ? ' is-active' : ''}`}>
                   <span />
                   <strong>{step}</strong>

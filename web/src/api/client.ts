@@ -166,13 +166,15 @@ export async function fetchPublicServices(): Promise<PublicServicesResponse> {
   return fetchStaticJson<PublicServicesResponse>('/services.json')
 }
 
-export async function startSetupRun(): Promise<SetupRunStatus> {
+export async function startSetupRun(mode: 'full_setup' | 'service_sync' = 'full_setup'): Promise<SetupRunStatus> {
   const response = await fetch('/api/run/start', {
     method: 'POST',
     credentials: 'include',
     headers: {
+      'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
     },
+    body: JSON.stringify({ mode }),
   })
 
   if (!response.ok) {

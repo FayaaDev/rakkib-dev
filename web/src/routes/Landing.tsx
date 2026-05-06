@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useLocation } from 'react-router-dom'
-import { fetchPublicServices } from '../api/client'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { fetchPublicServices, fetchSession, fetchSetupResume, fetchSetupRunStatus } from '../api/client'
 import type { PublicService } from '../api/types'
 import { LanguageToggle } from '../components/LanguageToggle'
 import { useI18n } from '../i18n/useI18n'
@@ -101,6 +101,7 @@ function GitHubIcon() {
 
 export function Landing() {
   const location = useLocation()
+  const navigate = useNavigate()
   const { t, tf, ts, tc } = useI18n()
   const [copied, setCopied] = useState(false)
   const [serviceSearch, setServiceSearch] = useState('')
@@ -120,12 +121,59 @@ export function Landing() {
   }
 
   const params = new URLSearchParams(location.search)
-
-  if (params.has('token')) {
-    return <SetupBridge />
-  }
+  const isTokenBootstrap = params.has('token')
 
   useEffect(() => {
+    if (isTokenBootstrap) {
+      return
+    }
+
+    let cancelled = false
+
+    void (async () => {
+      try {
+        await fetchSession()
+        const resume = await fetchSetupResume()
+        if (cancelled) {
+          return
+        }
+
+        if (resume.resume_phase >= 7) {
+          const run = await fetchSetupRunStatus()
+          if (cancelled) {
+            return
+          }
+
+          if (run.running) {
+            navigate('/setup/run', { replace: true })
+            return
+          }
+
+          if (resume.deployment_succeeded) {
+            navigate('/setup/phase/3', { replace: true })
+            return
+          }
+
+          navigate('/setup/confirm', { replace: true })
+          return
+        }
+
+        navigate(`/setup/phase/${resume.resume_phase}`, { replace: true })
+      } catch {
+        // Stay on the public landing page when there is no active authenticated session.
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isTokenBootstrap, navigate])
+
+  useEffect(() => {
+    if (isTokenBootstrap) {
+      return
+    }
+
     let cancelled = false
 
     void (async () => {
@@ -147,7 +195,11 @@ export function Landing() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [isTokenBootstrap])
+
+  if (isTokenBootstrap) {
+    return <SetupBridge />
+  }
 
   async function copyInstallCommand() {
     await navigator.clipboard.writeText(installCommand)
