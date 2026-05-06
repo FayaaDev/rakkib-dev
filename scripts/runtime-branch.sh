@@ -174,7 +174,7 @@ sync_runtime() {
   local push_changes="$4"
   local worktree_dir="$5"
   local temp_dir=0
-  local main_sha main_source_ref runtime_source_ref temp_parent
+  local main_sha main_commit main_source_ref runtime_source_ref temp_parent
 
   if [[ -z "$worktree_dir" ]]; then
     temp_parent="$(pick_temp_parent)"
@@ -198,7 +198,8 @@ sync_runtime() {
 
   main_source_ref="$(resolve_ref "$main_ref" "$remote")"
   runtime_source_ref="$(resolve_ref "$runtime_ref" "$remote")"
-  main_sha="$(git rev-parse --short "$main_source_ref")"
+  main_commit="$(git rev-parse "${main_source_ref}^{commit}")"
+  main_sha="$(git rev-parse --short "$main_commit")"
 
   log "Creating detached runtime worktree at ${worktree_dir}"
   git worktree add --detach "$worktree_dir" "$runtime_source_ref" >/dev/null
@@ -212,15 +213,15 @@ sync_runtime() {
   done
   shopt -u dotglob nullglob
 
-  log "Copying allowlisted files from ${main_source_ref}"
-  git -C "$worktree_dir" checkout "$main_source_ref" -- .gitignore install.sh pyproject.toml src/rakkib
+  log "Copying allowlisted files from ${main_commit}"
+  git -C "$worktree_dir" checkout "$main_commit" -- .gitignore install.sh pyproject.toml src/rakkib
   runtime_readme >"${worktree_dir}/README.md"
 
   git -C "$worktree_dir" add -A
-  verify_worktree "$worktree_dir" "$main_source_ref"
+  verify_worktree "$worktree_dir" "$main_commit"
 
   if git -C "$worktree_dir" diff --cached --quiet; then
-    log "${runtime_ref} already matches ${main_source_ref}"
+    log "${runtime_ref} already matches ${main_commit}"
     return 0
   fi
 
@@ -229,13 +230,13 @@ sync_runtime() {
     return 0
   fi
 
-  log "Committing runtime sync from ${main_source_ref}@${main_sha}"
+  log "Committing runtime sync from ${main_commit}@${main_sha}"
   GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-Rakkib Runtime Sync}"
   GIT_AUTHOR_EMAIL="${GIT_AUTHOR_EMAIL:-runtime-sync@users.noreply.github.com}"
   GIT_COMMITTER_NAME="${GIT_COMMITTER_NAME:-$GIT_AUTHOR_NAME}"
   GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-$GIT_AUTHOR_EMAIL}"
   export GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
-  git -C "$worktree_dir" commit -m "Sync runtime from ${main_source_ref}@${main_sha}" >/dev/null
+  git -C "$worktree_dir" commit -m "Sync runtime from ${main_commit}@${main_sha}" >/dev/null
 
   if [[ "$push_changes" -eq 1 ]]; then
     log "Pushing runtime sync to ${remote}/${runtime_ref}"

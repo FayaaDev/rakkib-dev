@@ -28,7 +28,7 @@ jobs:
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
           chmod +x scripts/runtime-branch.sh
-          scripts/runtime-branch.sh sync --main-ref HEAD --push
+          scripts/runtime-branch.sh sync --main-ref origin/main --push
 
   verify-runtime:
     if: github.ref == 'refs/heads/runtime'
