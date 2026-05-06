@@ -38,6 +38,7 @@ rakkib pull
 ```bash
 rakkib init              # run the interview wizard
 rakkib pull              # install prereqs and apply all steps
+rakkib update            # pull the latest installed CLI code from origin/runtime
 rakkib status            # show confirmed state and deployment summary
 rakkib add              # sync service selection for an existing deployment
 rakkib restart <service> # restart a single deployed service

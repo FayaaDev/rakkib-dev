@@ -254,6 +254,67 @@ class TestStatus:
         assert "vergo_terminal" in result.output
 
 
+class TestUpdate:
+    def test_update_success_existing_runtime_branch(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+        (repo_dir / ".git").mkdir()
+
+        ok = MagicMock(returncode=0, stdout="", stderr="")
+        with patch("rakkib.cli.subprocess.run", side_effect=[ok, ok, ok, ok]) as mock_run:
+            result = runner.invoke(cli, ["update"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 0
+        assert "Updated to the latest origin/runtime code" in result.output
+        assert [call.kwargs["cwd"] for call in mock_run.call_args_list] == [repo_dir] * 4
+        assert [call.args[0] for call in mock_run.call_args_list] == [
+            ["git", "fetch", "origin", "runtime"],
+            ["git", "rev-parse", "--verify", "runtime"],
+            ["git", "switch", "runtime"],
+            ["git", "pull", "--ff-only", "origin", "runtime"],
+        ]
+
+    def test_update_non_git_checkout_fails(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+
+        result = runner.invoke(cli, ["update"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 1
+        assert "is not a git checkout" in result.output
+
+    def test_update_pull_failure_exits_nonzero(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+        (repo_dir / ".git").mkdir()
+
+        ok = MagicMock(returncode=0, stdout="", stderr="")
+        failed = MagicMock(returncode=1, stdout="", stderr="pull blocked by local changes")
+        with patch("rakkib.cli.subprocess.run", side_effect=[ok, ok, ok, failed]):
+            result = runner.invoke(cli, ["update"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 1
+        assert "Update failed:" in result.output
+        assert "pull blocked by local changes" in result.output
+
+    def test_update_resolves_checkout_from_package_dir(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        package_dir = repo_dir / "src" / "rakkib"
+        package_dir.mkdir(parents=True)
+        (repo_dir / ".git").mkdir()
+
+        ok = MagicMock(returncode=0, stdout="", stderr="")
+        with patch("rakkib.cli.subprocess.run", side_effect=[ok, ok, ok, ok]) as mock_run:
+            result = runner.invoke(cli, ["update"], obj={"repo_dir": package_dir})
+
+        assert result.exit_code == 0
+        assert [call.kwargs["cwd"] for call in mock_run.call_args_list] == [repo_dir] * 4
+
+
 class TestDoctor:
     def test_doctor_json_output(self, tmp_path: Path):
         runner = CliRunner()
