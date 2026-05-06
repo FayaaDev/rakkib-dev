@@ -1,7 +1,7 @@
 import type { FormEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ApiError, fetchSetupPhase, submitSetupPhase } from '../api/client'
+import { ApiError, fetchSetupPhase, fetchSetupState, startSetupRun, submitSetupPhase } from '../api/client'
 import type { SetupPhasePayload, SetupQuestionField, SetupServiceCatalogItem } from '../api/types'
 import { FieldEditor } from '../components/FieldEditor'
 import { fieldLabel, renderFieldValue } from '../components/FieldRenderer'
@@ -38,7 +38,7 @@ const phaseLabels: Record<number, { title: string; description: string }> = {
 type PhaseState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; payload: SetupPhasePayload }
+  | { status: 'ready'; payload: SetupPhasePayload; deploymentSucceeded: boolean }
 
 type CatalogFieldKey = 'foundation_services' | 'optional_services' | 'host_addons'
 type CatalogServiceItem = SetupServiceCatalogItem & { fieldId: CatalogFieldKey }
@@ -165,12 +165,14 @@ function catalogSearchText(item: CatalogServiceItem) {
     .toLowerCase()
 }
 
-function renderCatalogCategory(
-  title: string,
-  items: CatalogServiceItem[],
-  selected: Set<string>,
-  onToggle: (fieldId: CatalogFieldKey, slug: string) => void,
-) {
+type CatalogCategoryProps = {
+  title: string
+  items: CatalogServiceItem[]
+  selected: Set<string>
+  onToggle: (fieldId: CatalogFieldKey, slug: string) => void
+}
+
+function CatalogCategory({ title, items, selected, onToggle }: CatalogCategoryProps) {
   const { t, tf, tc } = useI18n()
   const subdomainSuffix = t('serviceAddressSuffix')
   const localOrHostTool = t('localOrHostTool')
@@ -285,6 +287,7 @@ export function SetupPhase() {
   const navigate = useNavigate()
   const { t, tf } = useI18n()
   const phaseNumber = Number(phase)
+  const invalidPhase = !Number.isInteger(phaseNumber) || phaseNumber < 1
   const [state, setState] = useState<PhaseState>({ status: 'loading' })
   const [draft, setDraft] = useState<Record<string, unknown>>({})
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -294,8 +297,7 @@ export function SetupPhase() {
   const [serviceSearch, setServiceSearch] = useState('')
 
   useEffect(() => {
-    if (!Number.isInteger(phaseNumber) || phaseNumber < 1) {
-      setState({ status: 'error', message: 'Unknown setup phase.' })
+    if (invalidPhase) {
       return
     }
 
@@ -303,12 +305,15 @@ export function SetupPhase() {
 
     void (async () => {
       try {
-        const payload = await fetchSetupPhase(phaseNumber)
+        const [payload, setupState] = await Promise.all([
+          fetchSetupPhase(phaseNumber),
+          fetchSetupState(),
+        ])
         if (cancelled) {
           return
         }
 
-        setState({ status: 'ready', payload })
+        setState({ status: 'ready', payload, deploymentSucceeded: setupState.deployment_succeeded })
         setDraft(buildInitialDraft(payload))
         setFieldErrors({})
         setSubmitError(null)
@@ -327,11 +332,23 @@ export function SetupPhase() {
     return () => {
       cancelled = true
     }
-  }, [phaseNumber])
+  }, [invalidPhase, phaseNumber])
 
   const page = phaseLabels[phaseNumber] ?? {
     title: `Phase ${phaseNumber}`,
     description: 'Review the current backend-provided phase data.',
+  }
+
+  if (invalidPhase) {
+    return (
+      <SetupShell title="Setup" description="Review the current backend-provided phase data." currentPhase={1}>
+        <section className="placeholder-card bridge-card" aria-labelledby="setup-phase-error-title">
+          <p className="section-label">Setup Step</p>
+          <h2 id="setup-phase-error-title">Unable to open this step</h2>
+          <p className="hero-text">Unknown setup phase.</p>
+        </section>
+      </SetupShell>
+    )
   }
 
   if (state.status === 'loading') {
@@ -357,6 +374,7 @@ export function SetupPhase() {
   }
 
   const payload = state.payload
+  const deploymentSucceeded = state.deploymentSucceeded
   const selectedServices = new Set<string>()
   const foundation = draft.foundation_services ?? payload.answers.foundation_services
   const selected = draft.optional_services ?? payload.answers.optional_services
@@ -435,13 +453,20 @@ export function SetupPhase() {
         confirmations: transferSelected ? { transfer_public_risk: transferRiskAccepted } : {},
       })
 
+      if (payload.phase === 3 && deploymentSucceeded && result.resume_phase >= 7) {
+        await submitSetupPhase(6, { answers: { confirmed: true } })
+        await startSetupRun()
+        navigate('/setup/run')
+        return
+      }
+
       if (result.resume_phase >= 7) {
         navigate('/setup/confirm')
         return
       }
 
       if (result.resume_phase === payload.phase) {
-        setState({ status: 'ready', payload: result.phase })
+        setState({ status: 'ready', payload: result.phase, deploymentSucceeded: false })
         setDraft(buildInitialDraft(result.phase))
         setTransferRiskAccepted(false)
         return
@@ -544,7 +569,15 @@ export function SetupPhase() {
               </article>
 
               {serviceCategories.length > 0 ? (
-                serviceCategories.map(([category, items]) => renderCatalogCategory(category, items, selectedServices, toggleCatalogSelection))
+                serviceCategories.map(([category, items]) => (
+                  <CatalogCategory
+                    key={category}
+                    title={category}
+                    items={items}
+                    selected={selectedServices}
+                    onToggle={toggleCatalogSelection}
+                  />
+                ))
               ) : (
                 <article className="setup-service-section setup-service-empty">
                   <p className="section-label">{t('noMatchesLabel')}</p>
@@ -592,7 +625,15 @@ export function SetupPhase() {
             ) : null}
             <div className="setup-phase-actions">
               <button type="submit" className="bridge-button bridge-button-primary" disabled={isSubmitting}>
-                {isSubmitting ? 'Saving...' : payload.phase === 6 ? 'Approve launch' : 'Save and continue'}
+                {isSubmitting
+                  ? payload.phase === 3 && deploymentSucceeded
+                    ? 'Starting deployment...'
+                    : 'Saving...'
+                  : payload.phase === 3 && deploymentSucceeded
+                    ? 'Deploy selected services'
+                    : payload.phase === 6
+                      ? 'Approve launch'
+                      : 'Save and continue'}
               </button>
             </div>
           </form>

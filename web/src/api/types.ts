@@ -14,6 +14,7 @@ export type SetupPhaseSummary = {
 export type SetupResume = {
   resume_phase: number
   confirmed: boolean
+  deployment_succeeded: boolean
   phases: SetupPhaseSummary[]
 }
 
@@ -21,6 +22,13 @@ export type SetupState = {
   state: Record<string, unknown>
   confirmed: boolean
   resume_phase: number
+  deployment_succeeded: boolean
+}
+
+export type SetupDeployedUrl = {
+  service: string
+  label: string
+  url: string
 }
 
 export type SetupFieldEntry = {
@@ -90,8 +98,10 @@ export type SetupRunStatus = {
   running: boolean
   can_start: boolean
   confirmed: boolean
+  deployment_succeeded: boolean
   resume_phase: number
   log_tail: string[]
+  deployed_urls: SetupDeployedUrl[]
   attention: { type: 'cloudflare_auth'; url: string } | null
 }
 

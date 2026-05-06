@@ -82,7 +82,7 @@ export function SetupConfirm() {
           }
 
           setState({ status: 'ready', run, summary })
-        } catch (error) {
+        } catch {
           if (cancelled) {
             return
           }
@@ -212,7 +212,7 @@ export function SetupConfirm() {
     const description = isRunning
       ? 'Rakkib is installing the selected services in the background.'
       : run.status === 'succeeded'
-        ? 'The last setup finished successfully. You can reopen the progress screen or run again after changing your choices.'
+        ? 'The last setup finished successfully. Choose services to add or remove, then Rakkib will deploy the updated selection.'
         : run.status === 'failed'
           ? 'The last setup stopped before completion. You can retry after reviewing your saved choices.'
           : 'Your answers are saved and confirmed. Rakkib can now prepare the machine and bring your services online.'
@@ -230,9 +230,14 @@ export function SetupConfirm() {
           <p className="hero-text">{description}</p>
           {actionError ? <p className="setup-submit-error">{actionError}</p> : null}
           <div className="setup-run-actions">
-            {run.can_start ? (
+            {run.can_start && run.status !== 'succeeded' ? (
               <button type="button" className="bridge-button bridge-button-primary" onClick={handleStart} disabled={isStarting}>
-                {isStarting ? 'Starting...' : isFinished ? 'Launch again' : 'Launch setup'}
+                {isStarting ? 'Starting...' : isFinished ? 'Try again' : 'Launch setup'}
+              </button>
+            ) : null}
+            {run.status === 'succeeded' ? (
+              <button type="button" className="bridge-button bridge-button-primary" onClick={() => navigate('/setup/phase/3')}>
+                Choose services
               </button>
             ) : null}
             {(isRunning || isFinished) ? (

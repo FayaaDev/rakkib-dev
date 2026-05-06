@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import QRCode from 'qrcode'
 import { ApiError, fetchSetupRunStatus, startSetupRun } from '../api/client'
 import type { SetupRunStatus } from '../api/types'
 import { SetupShell } from '../components/SetupShell'
 
 const progressSteps = ['Preparing machine', 'Creating secure access', 'Starting services', 'Final checks']
+const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
 
 function statusTitle(run: SetupRunStatus) {
   if (run.status === 'running') {
@@ -31,6 +31,39 @@ function statusCopy(run: SetupRunStatus) {
     return 'Setup stopped before completion. Keep this session open and retry after checking your saved choices.'
   }
   return 'Start setup to let Rakkib prepare the host and launch your services.'
+}
+
+function activityTone(line: string) {
+  const lower = line.toLowerCase()
+  if (lower.includes('error') || lower.includes('failed') || lower.includes('exited with errors')) {
+    return 'error'
+  }
+  if (lower.includes('success') || lower.includes('completed') || lower.includes('finished') || lower.includes('deployed services')) {
+    return 'success'
+  }
+  if (lower.includes('waiting') || lower.includes('cloudflare') || lower.includes('approve')) {
+    return 'attention'
+  }
+  return 'info'
+}
+
+function activityLines(run: SetupRunStatus) {
+  const lines = run.log_tail
+    .map((line) => line.replace(ansiPattern, '').trim())
+    .filter(Boolean)
+    .slice(-80)
+
+  if (lines.length > 0) {
+    return lines
+  }
+
+  if (run.status === 'idle') {
+    return ['Deployment has not started yet.']
+  }
+  if (run.status === 'running') {
+    return ['Deployment is starting. Activity will appear here automatically.']
+  }
+  return [run.message]
 }
 
 type RunScreenState =
@@ -116,12 +149,10 @@ function CloudflareAuthPrompt({ url }: CloudflareAuthPromptProps) {
 }
 
 export function SetupRun() {
-  const navigate = useNavigate()
   const [state, setState] = useState<RunScreenState>({ status: 'loading' })
   const [actionError, setActionError] = useState<string | null>(null)
   const [isStarting, setIsStarting] = useState(false)
   const [reloadToken, setReloadToken] = useState(0)
-  const [showLog, setShowLog] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -176,8 +207,7 @@ export function SetupRun() {
     }
   }
 
-  function handleCheckProgress() {
-    setShowLog(true)
+  function handleRefreshActivity() {
     setReloadToken((current) => current + 1)
   }
 
@@ -203,6 +233,7 @@ export function SetupRun() {
     const run = state.run
 
     const activeIndex = run.status === 'succeeded' ? progressSteps.length : run.status === 'running' ? 2 : run.status === 'failed' ? 1 : 0
+    const lines = activityLines(run)
 
     return (
       <div className="setup-phase-stack">
@@ -239,33 +270,55 @@ export function SetupRun() {
             {actionError ? <p className="setup-submit-error">{actionError}</p> : null}
 
             <div className="setup-run-actions">
-              {run.can_start ? (
+              {run.can_start && run.status !== 'succeeded' ? (
                 <button type="button" className="bridge-button bridge-button-primary" onClick={handleStart} disabled={isStarting}>
                   {isStarting ? 'Starting...' : run.status === 'idle' ? 'Launch setup' : 'Try again'}
                 </button>
               ) : null}
-              <button type="button" className="bridge-button" onClick={handleCheckProgress}>
-                {showLog ? 'Refresh log' : 'Check progress'}
-              </button>
-              <button type="button" className="bridge-button" onClick={() => navigate('/setup/confirm')}>
-                Launch screen
+              <button type="button" className="bridge-button" onClick={handleRefreshActivity}>
+                Refresh activity
               </button>
             </div>
           </div>
         </section>
 
-        {showLog ? (
-          <article className="setup-field-card setup-log-panel">
+        {run.status === 'succeeded' && run.deployed_urls.length > 0 ? (
+          <article className="setup-field-card setup-deployed-services">
             <div className="setup-field-header">
               <div>
-                <p className="section-label">Terminal Log</p>
-                <h2>Latest setup output</h2>
+                <p className="section-label">Service URLs</p>
+                <h2>Your deployed subdomains</h2>
               </div>
-              <span className="badge">{run.running ? 'Live' : 'Snapshot'}</span>
+              <span className="badge">Ready</span>
             </div>
-            <pre className="setup-run-log">{run.log_tail.length > 0 ? run.log_tail.join('\n') : 'No log output yet.'}</pre>
+            <div className="setup-url-grid">
+              {run.deployed_urls.map((item) => (
+                <a key={item.service} className="setup-url-card" href={item.url} target="_blank" rel="noreferrer">
+                  <span>{item.label}</span>
+                  <strong>{item.url}</strong>
+                </a>
+              ))}
+            </div>
           </article>
         ) : null}
+
+        <article className="setup-field-card setup-log-panel">
+          <div className="setup-field-header">
+            <div>
+              <p className="section-label">Built-in Logs</p>
+              <h2>Setup activity</h2>
+            </div>
+            <span className="badge">{run.running ? 'Live' : 'Snapshot'}</span>
+          </div>
+          <div className="setup-activity-log" role="log" aria-live={run.running ? 'polite' : 'off'}>
+            {lines.map((line, index) => (
+              <div key={`${index}-${line}`} className={`setup-activity-row is-${activityTone(line)}`}>
+                <span aria-hidden="true" />
+                <p>{line}</p>
+              </div>
+            ))}
+          </div>
+        </article>
       </div>
     )
   }

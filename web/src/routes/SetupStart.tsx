@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { fetchSetupResume } from '../api/client'
+import { fetchSetupResume, fetchSetupRunStatus } from '../api/client'
 import { SetupBridge } from './SetupBridge'
 
 type StartState =
@@ -13,12 +13,13 @@ export function SetupStart() {
   const [state, setState] = useState<StartState>({ status: 'loading' })
 
   const params = new URLSearchParams(location.search)
-
-  if (params.has('token')) {
-    return <SetupBridge />
-  }
+  const hasToken = params.has('token')
 
   useEffect(() => {
+    if (hasToken) {
+      return
+    }
+
     let cancelled = false
 
     void (async () => {
@@ -29,6 +30,21 @@ export function SetupStart() {
         }
 
         if (resume.resume_phase >= 7) {
+          const run = await fetchSetupRunStatus()
+          if (cancelled) {
+            return
+          }
+
+          if (run.running) {
+            navigate('/setup/run', { replace: true })
+            return
+          }
+
+          if (resume.confirmed && resume.deployment_succeeded) {
+            navigate('/setup/phase/3', { replace: true })
+            return
+          }
+
           navigate('/setup/confirm', { replace: true })
           return
         }
@@ -47,7 +63,11 @@ export function SetupStart() {
     return () => {
       cancelled = true
     }
-  }, [navigate])
+  }, [hasToken, navigate])
+
+  if (hasToken) {
+    return <SetupBridge />
+  }
 
   if (state.status === 'loading') {
     return (
