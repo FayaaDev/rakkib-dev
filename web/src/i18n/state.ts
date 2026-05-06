@@ -7,6 +7,7 @@ export type I18nContextValue = {
   t: (key: TranslationKey) => string
   tf: (key: TranslationKey, vars: Record<string, string | number>) => string
   ts: (key: string) => string
+  tc: (key: string) => string
   setLocale: (locale: Locale) => void
 }
 

@@ -171,7 +171,7 @@ function renderCatalogCategory(
   selected: Set<string>,
   onToggle: (fieldId: CatalogFieldKey, slug: string) => void,
 ) {
-  const { t, tf } = useI18n()
+  const { t, tf, tc } = useI18n()
   const subdomainSuffix = t('serviceAddressSuffix')
   const localOrHostTool = t('localOrHostTool')
   const descriptionLabels = {
@@ -185,7 +185,7 @@ function renderCatalogCategory(
       <div className="setup-field-header">
         <div>
           <p className="section-label">{tf(items.length === 1 ? 'serviceCountOne' : 'serviceCountMany', { count: items.length })}</p>
-          <h2>{title}</h2>
+          <h2>{tc(title)}</h2>
         </div>
       </div>
 

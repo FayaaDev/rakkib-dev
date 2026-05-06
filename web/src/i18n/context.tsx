@@ -51,8 +51,16 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     [locale],
   )
 
+  const tc = useCallback(
+    (key: string) => {
+      const categories = translations[locale].categories as Record<string, string> | undefined
+      return categories?.[key] ?? key
+    },
+    [locale],
+  )
+
   return (
-    <I18nContext.Provider value={{ locale, dir, t, tf, ts, setLocale }}>
+    <I18nContext.Provider value={{ locale, dir, t, tf, ts, tc, setLocale }}>
       {children}
     </I18nContext.Provider>
   )

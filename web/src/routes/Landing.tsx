@@ -101,7 +101,7 @@ function GitHubIcon() {
 
 export function Landing() {
   const location = useLocation()
-  const { t, tf, ts } = useI18n()
+  const { t, tf, ts, tc } = useI18n()
   const [copied, setCopied] = useState(false)
   const [serviceSearch, setServiceSearch] = useState('')
   const [servicesState, setServicesState] = useState<ServicesState>({ status: 'loading' })
@@ -249,7 +249,7 @@ export function Landing() {
                           <p className="section-label">
                             {tf(items.length === 1 ? 'serviceCountOne' : 'serviceCountMany', { count: items.length })}
                           </p>
-                          <h2>{category}</h2>
+                          <h2>{tc(category)}</h2>
                         </div>
                       </div>
 
