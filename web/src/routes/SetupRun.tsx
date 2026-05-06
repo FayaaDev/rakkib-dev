@@ -244,12 +244,6 @@ export function SetupRun() {
             <div className={`setup-launch-ring is-${run.status}`}>
               <img src="/logo-hero.png" alt="" width="144" height="144" />
             </div>
-            <div className="setup-service-orbit">
-              <span>DB</span>
-              <span>AI</span>
-              <span>DNS</span>
-              <span>APP</span>
-            </div>
           </div>
 
           <div className="setup-progress-copy">
