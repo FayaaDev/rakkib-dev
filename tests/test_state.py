@@ -246,6 +246,38 @@ def test_state_load_save(tmp_path):
     assert loaded.get("foo") == "bar"
 
 
+def test_state_loaded_from_path_saves_back_to_same_file(tmp_path):
+    path = tmp_path / ".fss-state.yaml"
+    State({"foo": "bar"}).save(path)
+
+    loaded = State.load(path)
+    loaded.set("foo", "baz")
+    loaded.save()
+
+    assert State.load(path).get("foo") == "baz"
+
+
+def test_state_explicit_save_binds_future_bare_saves(tmp_path):
+    path = tmp_path / ".fss-state.yaml"
+    state = State({"foo": "bar"})
+
+    state.save(path)
+    state.set("foo", "baz")
+    state.save()
+
+    assert State.load(path).get("foo") == "baz"
+
+
+def test_state_bare_save_without_path_fails(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    state = State({"foo": "bar"})
+
+    with pytest.raises(RuntimeError, match="State has no save path"):
+        state.save()
+
+    assert not (tmp_path / ".fss-state.yaml").exists()
+
+
 def test_state_load_missing_file(tmp_path):
     path = tmp_path / "nonexistent.yaml"
     state = State.load(path)

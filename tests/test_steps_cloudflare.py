@@ -211,6 +211,33 @@ class TestRun:
 
         assert state.get("cloudflare.tunnel_uuid") == "new-uuid"
 
+    def test_run_saves_loaded_state_path_not_cwd(self, tmp_path, monkeypatch):
+        install_root = tmp_path / "install"
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        state_path = tmp_path / "package" / ".fss-state.yaml"
+        state_path.parent.mkdir()
+
+        initial = _make_state(install_root)
+        State(initial.to_dict()).save(state_path)
+        state = State.load(state_path)
+
+        cloudflared_dir = install_root / "data" / "cloudflared"
+        cloudflared_dir.mkdir(parents=True)
+        (cloudflared_dir / "path-bound-uuid.json").write_text("{}")
+
+        monkeypatch.chdir(cwd)
+        with patch("rakkib.steps.cloudflare._run") as mock_run:
+            with patch("rakkib.steps.cloudflare.compose_up"):
+                mock_run.side_effect = _subprocess_side_effect(
+                    tunnels_json=[{"name": "rakkib-example", "id": "path-bound-uuid"}]
+                )
+                cloudflare.run(state)
+
+        persisted = State.load(state_path)
+        assert persisted.get("cloudflare.tunnel_uuid") == "path-bound-uuid"
+        assert not (cwd / ".fss-state.yaml").exists()
+
     def test_run_existing_tunnel_uses_uuid(self, tmp_path):
         state = _make_state(
             tmp_path,
