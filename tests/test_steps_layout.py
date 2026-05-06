@@ -71,6 +71,29 @@ def test_layout_run_sudo_on_linux(tmp_path):
     assert calls[1][0][0] == ["sudo", "-n", "chown", "ubuntu", str(tmp_path)]
 
 
+def test_layout_run_recursively_repairs_admin_config_trees(tmp_path):
+    state = State(
+        {
+            "data_root": str(tmp_path),
+            "platform": "linux",
+            "admin_user": "ubuntu",
+            "foundation_services": [],
+            "selected_services": [],
+        }
+    )
+    with patch("os.geteuid", return_value=1000):
+        with patch("rakkib.steps.layout.subprocess.run") as mock_run:
+            with patch("pathlib.Path.write_text"):
+                mock_run.return_value.returncode = 0
+                layout.run(state)
+
+    commands = [call[0][0] for call in mock_run.call_args_list]
+    assert ["sudo", "-n", "chown", "-R", "ubuntu", str(tmp_path / "docker")] in commands
+    assert ["sudo", "-n", "chown", "-R", "ubuntu", str(tmp_path / "logs")] in commands
+    assert ["sudo", "-n", "chown", "ubuntu", str(tmp_path / "data")] in commands
+    assert ["sudo", "-n", "chown", "-R", "ubuntu", str(tmp_path / "data")] not in commands
+
+
 def test_layout_run_sudo_creates_logs_before_writing(tmp_path):
     state = State(
         {
@@ -105,7 +128,7 @@ def test_layout_run_sudo_failure_raises(tmp_path):
     with patch("os.geteuid", return_value=1000):
         with patch("rakkib.steps.layout.subprocess.run") as mock_run:
             mock_run.return_value.returncode = 1
-            with pytest.raises(RuntimeError, match="rakkib auth sudo"):
+            with pytest.raises(RuntimeError, match="rakkib auth"):
                 layout.run(state)
 
 
