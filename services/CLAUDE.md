@@ -12,8 +12,8 @@ and the agent implements the service in the Rakkib app (registry + templates + h
 ## Branch Rules
 
 - **All commits go to `main`.** Never commit service work directly to `runtime`.
-- After pushing to `main`, mirror the changed files (`install.sh`, `pyproject.toml`, `src/rakkib/**`) to the `runtime` orphan branch and push it. The test server installs from `runtime` by default.
-- Do not copy dev-only paths (`.beads/`, `.opencode/`, `docs/`, `services/`, `tests/`, `web/`) to `runtime`.
+- After pushing to `main`, regenerate `runtime` with `scripts/runtime-branch.sh sync --push`. The test server installs from `runtime` by default.
+- Do not hand-edit `runtime` and do not copy files outside the runtime allowlist.
 
 ## Hard Requirements
 
