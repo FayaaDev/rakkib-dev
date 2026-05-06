@@ -139,8 +139,7 @@ def test_phase_3_service_catalog_and_rules():
         "ollama-nvidia",
     ]
 
-    assert len(schema.rules) == 1
-    assert schema.rules[0]["if_selected"] == "transfer"
+    assert schema.rules == []
 
     field_map = {f.id: f for f in schema.fields}
     foundation = field_map["foundation_services"]

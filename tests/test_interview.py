@@ -58,7 +58,6 @@ def sample_schema() -> QuestionSchema:
             ],
         },
         rules=[
-            {"if_selected": "transfer", "require_confirm": "transfer_public_risk"},
             {"if_selected": "hermes", "requires": {"foundation_services": ["homepage"]}},
         ],
     )
@@ -662,18 +661,6 @@ class TestBuildSubdomainDefaults:
 
 
 class TestEnforceRules:
-    def test_transfer_warn_and_remove(self, sample_schema):
-        state = State({"selected_services": ["transfer"]})
-        with patch("rakkib.interview.prompt_confirm", return_value=False):
-            _enforce_rules(sample_schema, state)
-        assert state.get("selected_services") == []
-
-    def test_transfer_accepted(self, sample_schema):
-        state = State({"selected_services": ["transfer"]})
-        with patch("rakkib.interview.prompt_confirm", return_value=True):
-            _enforce_rules(sample_schema, state)
-        assert state.get("selected_services") == ["transfer"]
-
     def test_hermes_adds_required_service(self, sample_schema):
         state = State({
             "selected_services": ["hermes"],
