@@ -1,6 +1,6 @@
 """Rakkib CLI entrypoint.
 
-Commands: init, pull, doctor, status, add, restart, uninstall, privileged, auth, web
+Commands: init, pull, update, doctor, status, add, restart, uninstall, privileged, auth, web
 """
 
 from __future__ import annotations
@@ -195,6 +195,15 @@ def _web_url(host: str, port: int, token: str | None) -> str:
     if not token:
         return base
     return f"{base}?token={token}"
+
+
+def _checkout_dir(repo_dir: Path) -> Path:
+    """Resolve the git checkout root from either the repo root or package dir."""
+    candidates = [repo_dir, repo_dir.parent.parent]
+    for candidate in candidates:
+        if (candidate / ".git").exists():
+            return candidate
+    return repo_dir
 
 
 def _apply_service_selection(state: State, registry: dict[str, Any], selected_ids: set[str]) -> None:
@@ -607,6 +616,67 @@ def pull(ctx: click.Context, service: str | None) -> None:
         ok = _run_steps(state, repo_dir)
     if not ok:
         ctx.exit(1)
+
+
+@cli.command()
+@click.pass_context
+def update(ctx: click.Context) -> None:
+    """Pull the latest installed CLI code from origin/runtime."""
+    repo_dir = _checkout_dir(ctx.obj["repo_dir"])
+    if not (repo_dir / ".git").exists():
+        console.print(
+            f"[bold red]Error:[/bold red] {repo_dir} is not a git checkout. "
+            "Reinstall Rakkib with `bash install.sh` or the curl installer first."
+        )
+        ctx.exit(1)
+
+    console.print("[bold green]Rakkib update[/bold green]")
+    commands = [
+        ["git", "fetch", "origin", "runtime"],
+        ["git", "rev-parse", "--verify", "runtime"],
+    ]
+
+    try:
+        for command in commands:
+            result = subprocess.run(command, cwd=repo_dir, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise subprocess.CalledProcessError(
+                    result.returncode,
+                    command,
+                    output=result.stdout,
+                    stderr=result.stderr,
+                )
+
+        branch_exists = True
+    except subprocess.CalledProcessError as exc:
+        if exc.cmd == ["git", "rev-parse", "--verify", "runtime"]:
+            branch_exists = False
+        else:
+            detail = (exc.stderr or exc.output or "unknown git error").strip()
+            console.print(f"[bold red]Update failed:[/bold red] {detail}")
+            console.print("[yellow]Local checkout changes may need to be resolved manually before updating.[/yellow]")
+            ctx.exit(1)
+
+    switch_command = ["git", "switch", "runtime"] if branch_exists else ["git", "switch", "-c", "runtime", "origin/runtime"]
+    pull_command = ["git", "pull", "--ff-only", "origin", "runtime"]
+
+    try:
+        for command in (switch_command, pull_command):
+            result = subprocess.run(command, cwd=repo_dir, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise subprocess.CalledProcessError(
+                    result.returncode,
+                    command,
+                    output=result.stdout,
+                    stderr=result.stderr,
+                )
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.output or "unknown git error").strip()
+        console.print(f"[bold red]Update failed:[/bold red] {detail}")
+        console.print("[yellow]Local checkout changes may need to be resolved manually before updating.[/yellow]")
+        ctx.exit(1)
+
+    console.print("[green]Updated to the latest origin/runtime code.[/green]")
 
 
 @cli.command()
