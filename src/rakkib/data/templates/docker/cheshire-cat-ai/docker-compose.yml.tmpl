@@ -11,6 +11,10 @@ services:
       - CCAT_QDRANT_PORT=6333
     depends_on:
       - qdrant
+    volumes:
+      - {{DATA_ROOT}}/data/cheshire-cat-ai/data:/app/cat/data
+      - {{DATA_ROOT}}/data/cheshire-cat-ai/plugins:/app/cat/plugins
+      - {{DATA_ROOT}}/data/cheshire-cat-ai/static:/app/cat/static
     networks:
       - {{DOCKER_NET}}
 

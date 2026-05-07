@@ -780,6 +780,145 @@ class TestVerify:
 
 
 class TestRestartService:
+    @patch("rakkib.steps.services._repo_dir")
+    @patch("rakkib.steps.services._load_registry")
+    @patch("rakkib.steps.services._reload_caddy")
+    @patch("rakkib.steps.services._deploy_single_service")
+    @patch("rakkib.steps.services.docker_run")
+    def test_docker_service_uses_plain_restart_when_rendered_files_match(
+        self,
+        mock_docker_run: MagicMock,
+        mock_deploy: MagicMock,
+        mock_reload: MagicMock,
+        mock_registry: MagicMock,
+        mock_repo: MagicMock,
+        fake_repo: Path,
+        tmp_path: Path,
+    ):
+        mock_repo.return_value = fake_repo
+        mock_registry.return_value = {
+            "services": [
+                {
+                    "id": "nocodb",
+                    "state_bucket": "selected_services",
+                    "host_service": False,
+                    "caddy": {"template": "nocodb.caddy.tmpl"},
+                }
+            ]
+        }
+        data_root = tmp_path / "srv"
+        svc_dir = data_root / "docker" / "nocodb"
+        svc_dir.mkdir(parents=True)
+        (svc_dir / "docker-compose.yml").write_text("# nocodb compose\n")
+        (svc_dir / ".env").write_text("NOCODB_VAR={VALUE}\n")
+        route_dir = data_root / "docker" / "caddy" / "routes"
+        route_dir.mkdir(parents=True)
+        (route_dir / "nocodb.caddy").write_text("# nocodb route\n")
+        state = State({"data_root": str(data_root)})
+
+        services_step.restart_service(state, "nocodb")
+
+        mock_deploy.assert_not_called()
+        mock_reload.assert_not_called()
+        mock_docker_run.assert_called_once_with(
+            ["compose", "--project-directory", str(svc_dir), "restart"],
+            progress_message="Restarting nocodb...",
+        )
+
+    @patch("rakkib.steps.services._repo_dir")
+    @patch("rakkib.steps.services._load_registry")
+    @patch("rakkib.steps.services._reload_caddy")
+    @patch("rakkib.steps.services._deploy_single_service")
+    @patch("rakkib.steps.services.docker_run")
+    def test_docker_service_reloads_caddy_when_route_drift_is_detected(
+        self,
+        mock_docker_run: MagicMock,
+        mock_deploy: MagicMock,
+        mock_reload: MagicMock,
+        mock_registry: MagicMock,
+        mock_repo: MagicMock,
+        fake_repo: Path,
+        tmp_path: Path,
+    ):
+        mock_repo.return_value = fake_repo
+        mock_registry.return_value = {
+            "services": [
+                {
+                    "id": "nocodb",
+                    "state_bucket": "selected_services",
+                    "host_service": False,
+                    "caddy": {"template": "nocodb.caddy.tmpl"},
+                }
+            ]
+        }
+        data_root = tmp_path / "srv"
+        svc_dir = data_root / "docker" / "nocodb"
+        svc_dir.mkdir(parents=True)
+        (svc_dir / "docker-compose.yml").write_text("# nocodb compose\n")
+        (svc_dir / ".env").write_text("NOCODB_VAR={VALUE}\n")
+        route_dir = data_root / "docker" / "caddy" / "routes"
+        route_dir.mkdir(parents=True)
+        route_path = route_dir / "nocodb.caddy"
+        route_path.write_text("# stale route\n")
+        state = State({"data_root": str(data_root)})
+
+        services_step.restart_service(state, "nocodb")
+
+        mock_deploy.assert_not_called()
+        mock_docker_run.assert_called_once_with(
+            ["compose", "--project-directory", str(svc_dir), "restart"],
+            progress_message="Restarting nocodb...",
+        )
+        mock_reload.assert_called_once_with(data_root)
+        assert route_path.read_text() == "# nocodb route\n"
+
+    @patch("rakkib.steps.services._repo_dir")
+    @patch("rakkib.steps.services._load_registry")
+    @patch("rakkib.steps.services._reload_caddy")
+    @patch("rakkib.steps.services._deploy_single_service")
+    @patch("rakkib.steps.services.docker_run")
+    def test_docker_service_redeploys_when_compose_drift_is_detected(
+        self,
+        mock_docker_run: MagicMock,
+        mock_deploy: MagicMock,
+        mock_reload: MagicMock,
+        mock_registry: MagicMock,
+        mock_repo: MagicMock,
+        fake_repo: Path,
+        tmp_path: Path,
+    ):
+        mock_repo.return_value = fake_repo
+        mock_registry.return_value = {
+            "services": [
+                {
+                    "id": "nocodb",
+                    "state_bucket": "selected_services",
+                    "host_service": False,
+                    "caddy": {"template": "nocodb.caddy.tmpl"},
+                }
+            ]
+        }
+        data_root = tmp_path / "srv"
+        svc_dir = data_root / "docker" / "nocodb"
+        svc_dir.mkdir(parents=True)
+        (svc_dir / "docker-compose.yml").write_text("# stale compose\n")
+        (svc_dir / ".env").write_text("NOCODB_VAR={VALUE}\n")
+        route_dir = data_root / "docker" / "caddy" / "routes"
+        route_dir.mkdir(parents=True)
+        (route_dir / "nocodb.caddy").write_text("# nocodb route\n")
+        state = State({"data_root": str(data_root)})
+
+        services_step.restart_service(state, "nocodb")
+
+        mock_docker_run.assert_not_called()
+        mock_reload.assert_not_called()
+        mock_deploy.assert_called_once_with(
+            state,
+            mock_registry.return_value["services"][0],
+            fake_repo,
+            data_root,
+        )
+
     @patch("rakkib.steps.services._run_named_hooks")
     def test_host_service_uses_restart_hooks(self, mock_hooks):
         registry = {

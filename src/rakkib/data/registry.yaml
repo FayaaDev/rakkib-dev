@@ -998,6 +998,9 @@ services:
     caddy:
       template: cheshire-cat-ai-public.caddy.tmpl
     data_dirs:
+      - data/cheshire-cat-ai/data
+      - data/cheshire-cat-ai/plugins
+      - data/cheshire-cat-ai/static
       - data/cheshire-cat-ai/qdrant
     homepage:
       category: AI
@@ -1008,14 +1011,14 @@ services:
       enabled: true
       type: http
       target: public_url
-      path: /docs
+      path: /admin
       interval: 60
       timeout: 10
       retries: 3
     smoke:
-      path: /docs
-      expected_text: Swagger
-    notes: "AI agent microservice with an admin UI and REST API. Ships with a Qdrant sidecar for RAG. Optional."
+      path: /admin
+      expected_text: Cheshire Cat
+    notes: "AI agent microservice with an admin UI and REST API. Public root redirects to /admin and ships with a Qdrant sidecar for RAG. Optional."
 
   - id: flowise
     state_bucket: selected_services
