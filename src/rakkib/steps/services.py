@@ -5,10 +5,12 @@ Deploy foundation bundle services and selected optional services.
 
 from __future__ import annotations
 
+from copy import deepcopy
 import functools
 import shutil
 import subprocess
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Callable
 
 import yaml
@@ -143,13 +145,7 @@ def _render_env_example(
     """Render an .env.example template to .env, preserving existing keys when requested."""
     dst_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # If destination exists and we have preserve keys, merge them into state
-    # so the rendered output keeps existing values.
-    if dst_path.exists() and preserve_keys:
-        existing = _parse_dotenv(dst_path.read_text())
-        for key in preserve_keys:
-            if key in existing and existing[key]:
-                state.set(key, existing[key])
+    _preserve_env_keys_from_file(state, dst_path, preserve_keys)
 
     render_file(tmpl_path, dst_path, state)
     dst_path.chmod(0o600)
@@ -166,6 +162,84 @@ def _parse_dotenv(text: str) -> dict[str, str]:
             key, _, value = line.partition("=")
             result[key.strip()] = value.strip().strip("'\"")
     return result
+
+
+def _preserve_env_keys_from_file(
+    state: State,
+    env_path: Path,
+    preserve_keys: list[str] | None = None,
+) -> None:
+    """Copy preserved env values from an existing file into state before rendering."""
+    if not env_path.exists() or not preserve_keys:
+        return
+
+    existing = _parse_dotenv(env_path.read_text())
+    for key in preserve_keys:
+        if key in existing and existing[key]:
+            state.set(key, existing[key])
+
+
+def _read_text_if_exists(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    return path.read_text()
+
+
+def _service_render_changes(state: State, svc: dict, repo: Path, data_root: Path) -> dict[str, bool]:
+    """Return whether current templates would change a service's rendered artifacts."""
+    svc_id = svc["id"]
+    service_dir = data_root / "docker" / svc_id
+    route_path = data_root / "docker" / "caddy" / "routes" / f"{svc_id}.caddy"
+    route_before = _read_text_if_exists(route_path)
+    extra_before = {
+        extra["dst"]: _read_text_if_exists(data_root / extra["dst"])
+        for extra in svc.get("extra_templates", [])
+    }
+
+    with TemporaryDirectory(prefix=f"rakkib-{svc_id}-restart-") as tmpdir:
+        tmp_root = Path(tmpdir)
+        _render_caddy_route(state, svc, repo, tmp_root)
+        route_after = _read_text_if_exists(tmp_root / "docker" / "caddy" / "routes" / f"{svc_id}.caddy")
+        route_changed = route_before != route_after
+
+        _render_extra_templates(state, svc, repo, tmp_root)
+        extra_changed = any(
+            extra_before[extra["dst"]] != _read_text_if_exists(tmp_root / extra["dst"])
+            for extra in svc.get("extra_templates", [])
+        )
+
+        if svc.get("host_service"):
+            service_changed = extra_changed
+        else:
+            tmp_service_dir = tmp_root / "docker" / svc_id
+            tmp_service_dir.mkdir(parents=True, exist_ok=True)
+
+            env_path = service_dir / ".env"
+            env_changed = False
+            env_tmpl = repo / "templates" / "docker" / svc_id / ".env.example"
+            if env_tmpl.exists():
+                temp_state = State(deepcopy(state.to_dict()))
+                _preserve_env_keys_from_file(temp_state, env_path, svc.get("env_preserve_keys", []))
+                _render_env_example(temp_state, env_tmpl, tmp_service_dir / ".env")
+                env_changed = _read_text_if_exists(env_path) != _read_text_if_exists(tmp_service_dir / ".env")
+
+            compose_path = service_dir / "docker-compose.yml"
+            compose_changed = False
+            compose_tmpl = repo / "templates" / "docker" / svc_id / "docker-compose.yml.tmpl"
+            if compose_tmpl.exists():
+                render_file(compose_tmpl, tmp_service_dir / "docker-compose.yml", state)
+                compose_changed = _read_text_if_exists(compose_path) != _read_text_if_exists(
+                    tmp_service_dir / "docker-compose.yml"
+                )
+
+            missing_data_dirs = any(not (data_root / relative_dir).exists() for relative_dir in svc.get("data_dirs", []))
+            service_changed = env_changed or compose_changed or extra_changed or missing_data_dirs
+
+    return {
+        "route": route_changed,
+        "service": service_changed,
+        "any": route_changed or service_changed,
+    }
 
 
 def _render_caddy_route(state: State, svc: dict, repo: Path, data_root: Path) -> None:
@@ -517,27 +591,45 @@ def smoke_check(state: State, svc_id: str) -> VerificationResult:
 
 
 def restart_service(state: State, svc_id: str) -> None:
-    """Restart a single Docker or host-managed service by id."""
+    """Restart a single service, regenerating rendered artifacts when they drift."""
     data_root = Path(state.get("data_root", "/srv"))
+    repo = _repo_dir()
     registry = _load_registry()
     by_id = {s["id"]: s for s in registry["services"]}
     if svc_id not in by_id:
         raise ValueError(f"Service {svc_id} not found in registry")
 
     svc = by_id[svc_id]
+    changes = _service_render_changes(state, svc, repo, data_root)
+
     if svc.get("host_service"):
+        if changes["any"]:
+            _render_caddy_route(state, svc, repo, data_root)
+            _render_extra_templates(state, svc, repo, data_root)
+            if changes["route"]:
+                _reload_caddy(data_root)
+
         hooks = svc.get("hooks") or {}
         log_path = data_root / "logs" / f"step5-{svc_id}.log"
-        _run_named_hooks(hooks.get("restart", []), RESTART_HOOKS, state, svc, _repo_dir(), data_root, log_path, registry)
+        _run_named_hooks(hooks.get("restart", []), RESTART_HOOKS, state, svc, repo, data_root, log_path, registry)
         return
 
     svc_dir = data_root / "docker" / svc_id
     if not (svc_dir / "docker-compose.yml").exists():
         raise ValueError(f"No docker-compose.yml found for service '{svc_id}' at {svc_dir}")
-    docker_run(
-        ["compose", "--project-directory", str(svc_dir), "restart"],
-        progress_message=f"Restarting {svc_id}...",
-    )
+
+    if changes["service"]:
+        _deploy_single_service(state, svc, repo, data_root)
+    else:
+        docker_run(
+            ["compose", "--project-directory", str(svc_dir), "restart"],
+            progress_message=f"Restarting {svc_id}...",
+        )
+
+    if changes["route"]:
+        if not changes["service"]:
+            _render_caddy_route(state, svc, repo, data_root)
+        _reload_caddy(data_root)
 
 
 def restart_all(state: State) -> list[str]:
@@ -569,20 +661,14 @@ def restart_all(state: State) -> list[str]:
     restarted: list[str] = []
     for svc_id in order:
         svc = next((item for item in registry["services"] if item["id"] == svc_id), None)
-        if svc and svc.get("host_service"):
-            hooks = svc.get("hooks") or {}
-            log_path = data_root / "logs" / f"step5-{svc_id}.log"
-            _run_named_hooks(hooks.get("restart", []), RESTART_HOOKS, state, svc, _repo_dir(), data_root, log_path, registry)
-            restarted.append(svc_id)
+        if svc is None:
             continue
+        if not svc.get("host_service"):
+            svc_dir = data_root / "docker" / svc_id
+            if not (svc_dir / "docker-compose.yml").exists():
+                continue
 
-        svc_dir = data_root / "docker" / svc_id
-        if not (svc_dir / "docker-compose.yml").exists():
-            continue
-        docker_run(
-            ["compose", "--project-directory", str(svc_dir), "restart"],
-            progress_message=f"Restarting {svc_id}...",
-        )
+        restart_service(state, svc_id)
         restarted.append(svc_id)
 
     return restarted
