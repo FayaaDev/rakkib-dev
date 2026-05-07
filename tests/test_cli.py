@@ -1190,3 +1190,59 @@ class TestSyncServices:
 
         assert result.exit_code == 0
         mock_sync.assert_called_once()
+
+
+class TestRestart:
+    def test_restart_without_args_prompts_for_deployed_services(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+        state_file = repo_dir / ".fss-state.yaml"
+        state_file.write_text(
+            "deployed:\n"
+            "  exists: true\n"
+            "  foundation_services:\n"
+            "    - homepage\n"
+            "  selected_services:\n"
+            "    - n8n\n"
+        )
+
+        registry = {
+            "services": [
+                {"id": "postgres", "state_bucket": "always", "notes": "Database."},
+                {"id": "homepage", "state_bucket": "foundation_services", "notes": "Dashboard."},
+                {
+                    "id": "n8n",
+                    "state_bucket": "selected_services",
+                    "homepage": {"category": "Automation"},
+                    "notes": "Workflow automation.",
+                },
+                {"id": "caddy", "state_bucket": "always", "notes": "Proxy."},
+            ]
+        }
+
+        with (
+            patch("rakkib.cli.load_service_registry", return_value=registry),
+            patch("rakkib.cli.prompt_checkbox", return_value=["homepage", "caddy"]),
+            patch("rakkib.cli.services_step.restart_service") as mock_restart,
+        ):
+            result = runner.invoke(cli, ["restart"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 0
+        assert "Restarting selected services" in result.output
+        assert [call.args[1] for call in mock_restart.call_args_list] == ["homepage", "caddy"]
+
+    def test_restart_without_args_aborts_when_nothing_deployed(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+        (repo_dir / ".fss-state.yaml").write_text("{}\n")
+
+        with patch(
+            "rakkib.cli.load_service_registry",
+            return_value={"services": [{"id": "postgres", "state_bucket": "always", "notes": "Database."}]},
+        ):
+            result = runner.invoke(cli, ["restart"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 1
+        assert "No deployed services found" in result.output

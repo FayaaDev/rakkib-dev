@@ -174,6 +174,77 @@ def _build_add_choices(state: State, registry: dict[str, Any]) -> list[Choice]:
     return choices
 
 
+def _build_restart_choices(state: State, registry: dict[str, Any]) -> list[Choice]:
+    if not state.get("deployed.exists", False):
+        return []
+
+    foundation, selected = _deployed_service_lists(state)
+    active_ids = set(foundation)
+    active_ids.update(selected)
+    active_ids.update(
+        svc["id"] for svc in registry["services"] if svc.get("state_bucket") == "always"
+    )
+
+    choices: list[Choice] = []
+    sections = [
+        ("Always Installed", "always"),
+        ("Foundation Bundle", "foundation_services"),
+    ]
+
+    for title, bucket in sections:
+        bucket_services = [
+            svc for svc in registry["services"] if svc.get("state_bucket") == bucket and svc["id"] in active_ids
+        ]
+        if not bucket_services:
+            continue
+        choices.append(
+            Choice(title=f"━━ {title} ━━", value=f"__header_restart_{bucket}__", disabled=True)
+        )
+        for svc in bucket_services:
+            choices.append(
+                Choice(
+                    title=f"  {_service_label(svc)}",
+                    value=svc["id"],
+                    checked=True,
+                )
+            )
+
+    optional_services = [
+        svc
+        for svc in registry["services"]
+        if svc.get("state_bucket") == "selected_services" and svc["id"] in active_ids
+    ]
+    optional_groups: dict[str, list[dict[str, Any]]] = {}
+    for svc in optional_services:
+        optional_groups.setdefault(_service_selection_category(svc), []).append(svc)
+
+    for category, services in optional_groups.items():
+        choices.append(
+            Choice(
+                title=f"━━ {category} ━━",
+                value=f"__header_restart_{category}__",
+                disabled=True,
+            )
+        )
+        for svc in services:
+            choices.append(
+                Choice(
+                    title=f"  {_service_label(svc)}",
+                    value=svc["id"],
+                    checked=True,
+                )
+            )
+
+    return choices
+
+
+def _restart_order(registry: dict[str, Any], selected_ids: set[str]) -> list[str]:
+    ordered = [svc["id"] for svc in registry["services"] if svc["id"] in selected_ids and svc["id"] != "caddy"]
+    if "caddy" in selected_ids:
+        ordered.append("caddy")
+    return ordered
+
+
 def _validate_service_dependencies(selected_ids: set[str], registry: dict[str, Any]) -> list[str]:
     by_id = {svc["id"]: svc for svc in registry["services"]}
     errors: list[str] = []
@@ -1079,9 +1150,6 @@ def restart(ctx: click.Context, service: str | None, restart_all: bool) -> None:
     rakkib restart caddy          # restart a single service
     rakkib restart --all          # restart all services in dependency order
     """
-    if not service and not restart_all:
-        console.print("[yellow]Specify a service name or use --all.[/yellow]")
-        ctx.exit(1)
     if service and restart_all:
         console.print("[yellow]Use either a service name or --all, not both.[/yellow]")
         ctx.exit(1)
@@ -1100,7 +1168,7 @@ def restart(ctx: click.Context, service: str | None, restart_all: bool) -> None:
         for svc_id in restarted:
             console.print(f"  [green]✓[/green] {svc_id}")
         console.print(f"[bold green]Done.[/bold green] {len(restarted)} service(s) restarted.")
-    else:
+    elif service:
         console.print(f"[bold green]Restarting {service}...[/bold green]")
         try:
             services_step.restart_service(state, service)
@@ -1111,6 +1179,34 @@ def restart(ctx: click.Context, service: str | None, restart_all: bool) -> None:
             console.print(f"[bold red]Restart failed:[/bold red] {exc}")
             sys.exit(1)
         console.print(f"[green]✓[/green] {service} restarted.")
+    else:
+        registry = load_service_registry()
+        choices = _build_restart_choices(state, registry)
+        if not choices:
+            console.print("[yellow]No deployed services found to restart.[/yellow]")
+            ctx.exit(1)
+
+        selected = prompt_checkbox(
+            "Select deployed services to restart:",
+            choices=choices,
+        )
+        if not selected:
+            console.print("[yellow]No services selected.[/yellow]")
+            return
+
+        restart_ids = _restart_order(registry, set(selected))
+        console.print("[bold green]Restarting selected services...[/bold green]")
+        for svc_id in restart_ids:
+            try:
+                services_step.restart_service(state, svc_id)
+            except ValueError as exc:
+                console.print(f"[bold red]Error:[/bold red] {exc}")
+                sys.exit(1)
+            except subprocess.CalledProcessError as exc:
+                console.print(f"[bold red]Restart failed:[/bold red] {exc}")
+                sys.exit(1)
+            console.print(f"  [green]✓[/green] {svc_id}")
+        console.print(f"[bold green]Done.[/bold green] {len(restart_ids)} service(s) restarted.")
 
 
 @cli.command()
