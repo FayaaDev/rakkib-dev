@@ -18,7 +18,12 @@ from rakkib.state import State
 from rakkib.steps import service_enabled_key
 
 PLACEHOLDER_RE = re.compile(r"\{\{([A-Z_][A-Z0-9_]*)\}\}")
+UNRESOLVED_PLACEHOLDER_RE = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
 _env = Environment(undefined=DebugUndefined)
+
+
+class UnresolvedTemplateError(RuntimeError):
+    """Raised when a rendered file still contains a template placeholder."""
 
 
 def _file_env(template_root: Path) -> Environment:
@@ -79,6 +84,7 @@ def render_file(src: Path | str, dst: Path | str, state: State) -> None:
     dst_path = Path(dst)
     context = flatten_state(state)
     rendered = _render_template_path(src_path, context, src_path.parent)
+    _ensure_no_unresolved_placeholders(rendered, src_path)
     dst_path.write_text(rendered)
 
 
@@ -97,4 +103,17 @@ def render_tree(src_dir: Path | str, dst_dir: Path | str, state: State) -> None:
         dst_file = dst_path / rel.with_suffix("")
         dst_file.parent.mkdir(parents=True, exist_ok=True)
         rendered = _render_template_path(src_file, context, src_path)
+        _ensure_no_unresolved_placeholders(rendered, src_file)
         dst_file.write_text(rendered)
+
+
+def _ensure_no_unresolved_placeholders(rendered: str, src_path: Path) -> None:
+    """Reject files that would ship literal Jinja placeholders."""
+    matches = [match.strip() for match in UNRESOLVED_PLACEHOLDER_RE.findall(rendered)]
+    if not matches:
+        return
+
+    keys = ", ".join(sorted(set(matches)))
+    raise UnresolvedTemplateError(
+        f"Rendered template {src_path} still contains unresolved placeholder(s): {keys}"
+    )

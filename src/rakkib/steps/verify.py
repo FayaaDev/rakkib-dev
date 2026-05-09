@@ -5,12 +5,15 @@ Run the final smoke tests for the deployed server.
 
 from __future__ import annotations
 
+import re
 import stat
 from pathlib import Path
 from typing import Any
 
 from rakkib.state import DEFAULT_STATE_FILE, State
 from rakkib.steps import STEP_MODULES, VerificationResult
+
+UNRESOLVED_PLACEHOLDER_RE = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
 
 
 # ---------------------------------------------------------------------------
@@ -79,6 +82,30 @@ def _verify_state_file_permissions(state: State) -> VerificationResult:
     return VerificationResult.success("verify", f"{state_path} permissions are restricted")
 
 
+def _verify_rendered_templates(state: State) -> VerificationResult:
+    data_root = Path(state.get("data_root", "/srv"))
+    docker_root = data_root / "docker"
+    if not docker_root.exists():
+        return VerificationResult.success("verify", f"{docker_root} does not exist")
+
+    candidates = list(docker_root.rglob(".env"))
+    candidates.extend(docker_root.rglob("docker-compose.yml"))
+    candidates.extend((docker_root / "caddy").glob("Caddyfile*"))
+    candidates.extend((docker_root / "caddy" / "routes").glob("*.caddy"))
+
+    for path in sorted({candidate for candidate in candidates if candidate.is_file()}):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        match = UNRESOLVED_PLACEHOLDER_RE.search(text)
+        if match:
+            key = match.group(1).strip()
+            return VerificationResult.failure(
+                "verify",
+                f"{path} contains unresolved template placeholder `{key}`; rerun setup after providing the missing value",
+            )
+
+    return VerificationResult.success("verify", "rendered files contain no unresolved template placeholders")
+
+
 def _print_summary(results: list[VerificationResult]) -> None:
     """Print a plain-text summary of verification results."""
     print("")
@@ -114,7 +141,7 @@ def _print_summary(results: list[VerificationResult]) -> None:
 
 
 def run(state: State) -> None:
-    results = [_verify_state_file_permissions(state), *_collect_verifications(state)]
+    results = [_verify_state_file_permissions(state), _verify_rendered_templates(state), *_collect_verifications(state)]
     failures = [r for r in results if not r.ok]
 
     if failures:
@@ -129,7 +156,7 @@ def run(state: State) -> None:
 
 
 def verify(state: State) -> VerificationResult:
-    results = [_verify_state_file_permissions(state), *_collect_verifications(state)]
+    results = [_verify_state_file_permissions(state), _verify_rendered_templates(state), *_collect_verifications(state)]
     failures = [r for r in results if not r.ok]
 
     if not failures:

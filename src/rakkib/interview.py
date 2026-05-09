@@ -15,6 +15,7 @@ from rich.console import Console
 from rakkib.normalize import apply_normalize, eval_when, resolve_numeric_aliases
 from rakkib.schema import FieldDef, QuestionSchema, load_all_schemas
 from rakkib.state import State, subdomain_placeholder_key
+from rakkib.service_catalog import apply_service_catalog_selection, mark_deployment_stale
 from rakkib.steps import load_service_registry
 from rakkib.tui import prompt_checkbox, prompt_confirm, prompt_password, prompt_select, prompt_text
 
@@ -204,35 +205,12 @@ def _handle_service_catalog(schema: QuestionSchema, state: State) -> None:
     optional_selected = [s for s in selected if s in {item["slug"] for item in optional_items}]
     host_selected = [s for s in selected if s in {item["slug"] for item in host_items}]
 
-    state.set("foundation_services", foundation_selected)
-    state.set("selected_services", optional_selected)
     state.set("host_addons", host_selected)
-
-    # Default NocoDB admin email when NocoDB is installed.
-    if "nocodb" in foundation_selected:
-        state.set("admin_email", "admin@nocodb.com")
-
-    _build_subdomain_defaults(foundation_items + optional_items, state)
+    apply_service_catalog_selection(state, registry, set(foundation_selected + optional_selected))
+    mark_deployment_stale(state)
 
     # Subdomains are always defaults; keep the flow non-interactive.
     state.set("customize_subdomains", False)
-
-
-def _build_subdomain_defaults(items: list[dict[str, Any]], state: State) -> None:
-    """Set default subdomains for all selected services."""
-    selected_slugs = set(state.get("foundation_services", []) or [])
-    selected_slugs.update(state.get("selected_services", []) or [])
-
-    for item in items:
-        slug = item["slug"]
-        if slug not in selected_slugs:
-            continue
-        default_sub = item.get("default_subdomain", slug)
-        # Some catalog entries represent non-HTTP tools and intentionally have no subdomain.
-        if not default_sub:
-            continue
-        state.set(f"subdomains.{slug}", default_sub)
-        state.set(subdomain_placeholder_key(slug), default_sub)
 
 
 # ---------------------------------------------------------------------------
