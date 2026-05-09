@@ -13,8 +13,9 @@ branches in step code, clean `run/verify` step contract, `install.sh` robust on 
 The work below is **hardening + decomposition**, not a rewrite.
 
 Status note: critical hardening work landed in `4ccb699` and was synced to `runtime` in
-`40ff4f8`. Items marked `[x]` are implemented in that commit; `[~]` means partially
-covered but not fully matching the original PR-plan scope.
+`40ff4f8`. Explicit Cloudflare service routing and internal exposure mode landed in
+`db69a12`; the MIT license landed in `6af5ba5`. Items marked `[x]` are implemented;
+`[~]` means partially covered but not fully matching the original PR-plan scope.
 
 Hot files by size:
 `cli.py` 1473, `steps/cloudflare.py` 905, `hooks/services.py` 884, `steps/services.py` 723,
@@ -46,10 +47,10 @@ Hot files by size:
   openclaw/claude/codex teardown. Deselecting `vaultwarden` leaves
   `vault.example.com` resolving to the tunnel — subdomain hijacking / routing ambiguity
   vector when a different service later reuses the subdomain.
-  → Add `cloudflare.delete_dns_route(state, subdomain)` (calls `cloudflared tunnel route
-  dns delete`; tolerates "not found" as success). Wire as `hooks.remove:
-  [cloudflare_dns_delete]` in `registry.yaml` for every service with a `default_subdomain`.
-  This stays registry-driven — no per-service `if` branches.
+  → DNS deletion is implemented through `cloudflare.delete_dns_route(state, fqdn)`, and
+  `cloudflare_dns_delete` still stays registry-driven through removal hooks. Local ingress
+  is unpublished before the Cloudflare DNS delete attempt; failures return an actionable
+  warning instead of re-exposing the removed service.
 - [x] **C5. Postgres role/password embedded in SQL via f-string.** `steps/postgres.py:84-91`
   and `steps/services.py:347-350` interpolate `role`, `password`, `db_name` directly. Today
   mitigated only because `secrets.generate_password()` is alphanumeric; the `role`/`db`
@@ -99,10 +100,16 @@ Hot files by size:
   `rakkib pull` hangs (cloudflared login waiting forever), the user's only recovery is
   restarting `rakkib web`, leaving an orphan child. → `POST /api/run/cancel` →
   `process.terminate()`; track child PID in state for visibility.
+- [x] **H10. Wildcard Cloudflare/Caddy routing exposed every subdomain.** The old
+  `*.domain` tunnel ingress plus Caddy wildcard fallback made any DNS record under the
+  domain hit the server. `db69a12` removes wildcard ingress/fallback, adds
+  `exposure_mode`, skips Cloudflare for internal installs, creates explicit service DNS
+  routes after deploy, tracks `cloudflare.published_services`, and rerenders/reloads
+  cloudflared when services are unpublished.
 
 ### MEDIUM — maintainability (no behavior change)
 
-- **M1. Decompose `cli.py` (1473 → ~600 LOC).** 27 helpers live above the `@cli.group`
+- [x] **M1. Decompose `cli.py` (1473 → ~600 LOC).** 27 helpers live above the `@cli.group`
   decorator. Move:
   - service-selection helpers (lines ~120–264, 301–354, 644–691) → `steps/services.py`
     (or a new `services_cli.py`)
@@ -111,59 +118,61 @@ Hot files by size:
   - small utilities (`_web_url`, `_checkout_dir`, `_default_host_gateway`,
     `_detect_lan_ip`) → new `util.py`
   **Do this before M2/M3/M4** — they all touch `cli.py`.
-- **M2. Consolidate `_resolve_admin_user` (cli.py:68-78) + `_docker_access_user`
+- [x] **M2. Consolidate `_resolve_admin_user` (cli.py:68-78) + `_docker_access_user`
   (cli.py:365-373).** Single `resolve_user(state, *, explicit=None, require=False)`.
-- **M3. Consolidate `_build_add_choices` (cli.py:120-174) + `_build_restart_choices`
+- [x] **M3. Consolidate `_build_add_choices` (cli.py:120-174) + `_build_restart_choices`
   (cli.py:177-238).** ~90% identical; parameterize with a `PickerOptions` dataclass.
-- **M4. Stop reaching for `data_root` and `repo_dir` everywhere.** 7+ inlined
+- [x] **M4. Stop reaching for `data_root` and `repo_dir` everywhere.** 7+ inlined
   `Path(state.get("data_root", "/srv"))`, 6+ inlined `Path(__file__).resolve().parent.parent / "data"`.
   Add `state.data_root` property and a module-level `RAKKIB_DATA_DIR` constant; sweep
   `steps/*.py` and `cli.py`.
-- **M5. Web/TUI validation duplication.** Text validator (`web/answers.py:199-217` vs
+- [~] **M5. Web/TUI validation duplication.** Text validator (`web/answers.py:199-217` vs
   `interview.py:585-613`), confirm (`135-162` vs `350-379`), secret group (`89-111` vs
   `448-463`), single-/multi-select. Extract `src/rakkib/validators.py` with pure functions;
-  consume from both call sites. **Do this before H4.**
+  consume from both call sites. `db69a12` adds shared subdomain validation in
+  `service_catalog.py`, but the broader validator extraction remains open.
 - **M6. Decompose `steps/cloudflare.py` (905 LOC).** Split into:
   - `cloudflare/client.py` — typed `cloudflared` wrapper (list/create/get tunnel,
-    add/delete DNS route)
+    create DNS route, publish/unpublish service ingress)
   - `cloudflare/auth.py` — three auth methods
   - `cloudflare/credentials.py` — discovery, ownership/perm repair
   - `cloudflare/verify.py` — metrics + edge-health (absorbs `doctor.py:412-536`
     `check_cloudflare_readiness`)
   - `steps/cloudflare.py` — orchestration + state mutation only
-  Each ≤ 250 LOC. C4's DNS-delete function lives in `cloudflare/client.py`.
-- **M7. `HookContext` for hooks.** All hooks in `hooks/services.py` take 6 args; most use
+  Each ≤ 250 LOC. H10's explicit-route helpers move into `cloudflare/client.py` cleanly.
+- [x] **M7. `HookContext` for hooks.** All hooks in `hooks/services.py` take 6 args; most use
   one. Replace with `@dataclass class HookContext` (state, svc, repo, data_root, log_path,
   registry). Sweep all hook signatures.
-- **M8. Per-fragment Caddy validation.** `steps/caddy.py:69` only validates the assembled
+- [x] **M8. Per-fragment Caddy validation.** `steps/caddy.py:69` only validates the assembled
   Caddyfile — error messages don't identify the broken service. After rendering each
   fragment, validate against a synthetic Caddyfile containing just that fragment; report
   service id on failure. Bundle with H7.
-- **M9. Cycle detection in service-dependency topo-sort.** `steps/__init__.py:97-98`
+- [x] **M9. Cycle detection in service-dependency topo-sort.** `steps/__init__.py:97-98`
   silently appends remaining nodes. → Detect remaining-after-Kahn = cycle; raise
   `RegistryError("dependency cycle: …")`.
-- **M10. install.sh signal handling.** Ctrl-C mid-`pip install` leaves a half-installed
+- [x] **M10. install.sh signal handling.** Ctrl-C mid-`pip install` leaves a half-installed
   venv at `${INSTALL_DIR}/.venv`. Add `trap` for INT/TERM/ERR that warns the user the
   venv is incomplete and points at the recovery command (`rm -rf ${INSTALL_DIR}/.venv &&
   rerun`). (Promoted from LOW.)
-- **M11. Subprocess error messages truncate stderr.** `docker.py:_error_message`
+- [x] **M11. Subprocess error messages truncate stderr.** `docker.py:_error_message`
   (around lines 257–261) — when a service fails to start during a fresh-server install,
   truncated `stderr` is what gates 80% of user support cost. Include up to 2 KB of
   `stderr.strip()`. (Promoted from LOW.)
 
 ### LOW — polish (bundle as one PR)
 
-- **L1.** Drop `main()` wrapper in `cli.py`; point `pyproject.toml` `[project.scripts]
+- [x] **L1.** Drop `main()` wrapper in `cli.py`; point `pyproject.toml` `[project.scripts]
   rakkib = "rakkib.cli:cli"` directly.
-- **L2.** Promote `"always"`/`"foundation_services"`/`"selected_services"` to a `StateBucket`
+- [x] **L2.** Promote `"always"`/`"foundation_services"`/`"selected_services"` to a `StateBucket`
   `StrEnum` in `state.py`.
-- **L3.** `extra_templates` missing-file check in `steps/services.py:288-293` — raise
+- [x] **L3.** `extra_templates` missing-file check in `steps/services.py:288-293` — raise
   with the registry-author–facing message (which `svc_id`, which path).
-- **L4.** Path-traversal defense for `caddy.template`: reject names containing `/` or `..`
+- [x] **L4.** Path-traversal defense for `caddy.template`: reject names containing `/` or `..`
   in `steps/services.py:245-259`. (Defense-in-depth; registry is in-repo.)
 - **L5.** Ollama variants (`registry.yaml:1715-1764`) — three near-identical entries differ
   only in `image`. Optional `gpu_variant` field with an `image_variants` map.
 - **L6.** Test fixture consolidation into `tests/conftest.py`. (Lands as part of PR-01.)
+- [x] **L7.** Add an MIT `LICENSE`. Landed in `6af5ba5`.
 
 ### Dropped from earlier draft
 
@@ -197,27 +206,31 @@ under regression coverage.
    Switch to `shlex.split` + `shell=False`; assert with each detect string in
    `data/questions/*.md`.
 7. [x] **PR-07 — C4 + C7 + H1 + H2 (service-removal correctness).** Coherent
-   "teardown/hygiene" theme: DNS cleanup hook, sudo-chown returncode, `unlink(missing_ok=True)`,
-   `init.sql` chmod.
+   "teardown/hygiene" theme: local Cloudflare route unpublish, DNS deletion attempt,
+   sudo-chown returncode, `unlink(missing_ok=True)`, `init.sql` chmod.
 8. [x] **PR-08 — H3 + H6 + H7 + H9 (web + render hardening).** Logout endpoint,
    pinned-checksum doctor fixes, refuse `{{ ` literals in rendered output, run-cancel
    endpoint.
-9. [~] **PR-09 — H8 + M10 + M11 (install / subprocess polish).** `--force-with-lease`,
+9. [x] **PR-09 — H8 + M10 + M11 (install / subprocess polish).** `--force-with-lease`,
    install.sh trap, `_error_message` keeps 2 KB of stderr.
-10. [ ] **PR-10 — M5 (validators extraction).** Pure refactor, broad reach but no behavior
-    change. Strong tests already exist in `test_interview.py`/`test_web_answers.py`; mirror
-    them in a new `tests/test_validators.py`.
+10. [~] **PR-10 — M5 (validators extraction).** `db69a12` adds shared subdomain
+    validation helpers. The broad text/confirm/secret/single-/multi-select validator
+    extraction remains open; mirror coverage in a new `tests/test_validators.py`.
 11. [x] **PR-11 — H4 (ServiceCatalogHandler).** Now consumes shared service-catalog helpers. Land the
      behavior unification (CLI gains `confirmed=False`/`web_deployment.status="stale"`
      semantics under explicit flag).
-12. [ ] **PR-12 — M1 (cli.py decomposition).** ~600 LOC moved across new homes; commands
+12. [x] **PR-12 — Explicit Cloudflare service routes.** `db69a12` adds `exposure_mode`,
+    skips Cloudflare for internal installs, removes wildcard routing, prompts/validates
+    per-service subdomains, publishes service DNS routes after deploy, and unpublishes
+    local service ingress on removal.
+13. [x] **PR-13 — M1 (cli.py decomposition).** ~600 LOC moved across new homes; commands
     stay in `cli.py`.
-13. [ ] **PR-13 — M2 + M3 + M4 (dedupe inside the new structure).** Cheap once M1 is in.
-14. [ ] **PR-14 — M6 (Cloudflare split).** Absorbs `check_cloudflare_readiness` from
-    `doctor.py`. C4's DNS-delete moves into `cloudflare/client.py` cleanly.
-15. [ ] **PR-15 — M7 (HookContext).** Touches every hook — sweep is mechanical.
-16. [ ] **PR-16 — M8 + M9 (Caddy per-fragment validate + cycle detection).**
-17. [ ] **PR-17 — LOW polish bundle (L1–L5).**
+14. [x] **PR-14 — M2 + M3 + M4 (dedupe inside the new structure).** Cheap once M1 is in.
+15. [ ] **PR-15 — M6 (Cloudflare split).** Absorbs `check_cloudflare_readiness` from
+    `doctor.py`. H10's explicit-route helpers move into `cloudflare/client.py` cleanly.
+16. [x] **PR-16 — M7 (HookContext).** Touches every hook — sweep is mechanical.
+17. [x] **PR-17 — M8 + M9 (Caddy per-fragment validate + cycle detection).**
+18. [~] **PR-18 — LOW polish bundle (L1–L5).** L1-L4 are implemented; L5 remains optional.
 
 ---
 
@@ -230,8 +243,8 @@ under regression coverage.
   `src/rakkib/steps/cloudflare.py`, `src/rakkib/steps/caddy.py`, `src/rakkib/steps/verify.py`,
   `src/rakkib/steps/__init__.py`
 - `src/rakkib/hooks/services.py`
-- `src/rakkib/data/registry.yaml` (new `hooks.remove: [cloudflare_dns_delete]` entries
-  for services with `default_subdomain`)
+- `src/rakkib/data/registry.yaml` (`hooks.remove: [cloudflare_dns_delete]` entries remain
+  registry-driven; the hook now unpublishes local Cloudflare routing and warns about stale DNS)
 - `src/rakkib/render.py`, `src/rakkib/interview.py`, `src/rakkib/cli.py`,
   `src/rakkib/docker.py`, `src/rakkib/doctor.py`
 - `install.sh`, `scripts/runtime-branch.sh`, `pyproject.toml`
@@ -243,8 +256,8 @@ under regression coverage.
 - `rakkib.normalize.eval_when` already evaluates conditional expressions for both web and
   CLI paths; the `ServiceCatalogHandler` (H4) must consume it, not reimplement.
 - `rakkib.docker.docker_run` is the right wrapper for any new subprocess call (handles
-  log redirection, permission-error detection); use it for the new
-  `cloudflared … route dns delete`.
+  log redirection, permission-error detection); use it for Cloudflare DNS route creation,
+  local unpublish/reload work, and any future DNS-delete implementation.
 - `rakkib.secrets.ensure_secrets` already handles conditional secrets and propagation —
   M7's `HookContext` should expose its results, not regenerate.
 - `rakkib.render.flatten_state` + `render_file` are the rendering surface; H7's strict
@@ -275,16 +288,18 @@ under regression coverage.
 
 **C4 (DNS cleanup):** `[x] implemented; manual bare-metal smoke remains open.`
 - [x] `cloudflare.delete_dns_route(state, fqdn)` calls
-  `cloudflared tunnel route dns delete <tunnel> <fqdn>`; "not found" maps to success.
-- [x] `registry.yaml` adds `hooks.remove: [cloudflare_dns_delete]` for every service with a
-  `default_subdomain` (filebrowser, vaultwarden, forgejo, mealie, cheshire-cat-ai, etc.).
-- [x] Test: with a fixture state holding `vault.example.com`, calling
-  `services.remove_single_service(state, "vaultwarden")` invokes the hook with
-  `subdomain=vault, domain=example.com` (assert exact `cloudflared` argv via subprocess
-  mock).
-- [ ] Manual smoke (bare-metal box): deploy with vaultwarden, run `dig vault.example.com`
-  (resolves), `rakkib remove vaultwarden`, `dig vault.example.com` (no longer resolves
-  via the tunnel).
+  `cloudflared tunnel route dns delete <tunnel> <fqdn>`.
+- [x] Wildcard `*.domain` Cloudflare ingress and Caddy wildcard fallback are removed.
+- [x] `cloudflare.publish_service(state, svc)` creates explicit per-service DNS routes only
+  after successful deploy and tracks `cloudflare.published_services`.
+- [x] `cloudflare.unpublish_service(state, svc, warn=True)` removes local service ingress,
+  rerenders/reloads cloudflared, and attempts to delete the Cloudflare DNS record.
+- [x] `registry.yaml` keeps `hooks.remove: [cloudflare_dns_delete]` registry-driven for
+  services with `default_subdomain`; the hook delegates to `unpublish_service`.
+- [x] Tests assert explicit route creation and exact `cloudflared tunnel route dns delete` argv.
+- [ ] Manual smoke (bare-metal box): deploy with vaultwarden, confirm it resolves and serves,
+  remove it, then confirm `vault.<domain>` no longer serves vaultwarden. If DNS deletion is
+  reintroduced, also confirm `dig vault.<domain>` no longer resolves via the tunnel.
 
 ---
 
@@ -316,7 +331,7 @@ On the bare-metal target after the security PRs (PR-02 through PR-08) ship to `r
 curl -fsSL https://raw.githubusercontent.com/FayaaDev/Rakkib/main/install.sh | bash
 rakkib init && rakkib pull
 rakkib add        # deselect a service that has a Cloudflare subdomain
-dig <removed>.<domain>   # must NOT resolve via the tunnel
+curl -i https://<removed>.<domain>   # must return 404/not service content
 stat -c '%a' ~/Rakkib/.fss-state.yaml   # must be 600
 curl -i 'http://<server>/setup/?token=$BOOTSTRAP'   # must be 401 without bootstrap POST
 ```
