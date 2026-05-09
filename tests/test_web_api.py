@@ -74,3 +74,17 @@ def test_cookie_authenticated_patch_accepts_csrf_token(tmp_path):
 
     assert response.status_code == 200
     assert response.json()["state"]["domain"] == "example.com"
+
+
+def test_logout_revokes_session_and_clears_cookie(tmp_path):
+    client = _client(tmp_path)
+    bootstrap = client.post("/api/session/bootstrap", json={"token": "setup-token"})
+    csrf_token = bootstrap.json()["csrf_token"]
+
+    logout = client.post("/api/session/logout", headers={"X-CSRF-Token": csrf_token})
+    session = client.get("/api/session")
+
+    assert logout.status_code == 200
+    assert logout.json()["ok"] is True
+    assert "rakkib_session=" in logout.headers["set-cookie"]
+    assert session.status_code == 401

@@ -252,7 +252,7 @@ sync_runtime() {
 
   if [[ "$push_changes" -eq 1 ]]; then
     log "Pushing runtime sync to ${remote}/${runtime_ref}"
-    git -C "$worktree_dir" push "$remote" HEAD:"refs/heads/${runtime_ref}"
+    git -C "$worktree_dir" push --force-with-lease "$remote" HEAD:"refs/heads/${runtime_ref}"
   else
     log "Created detached runtime sync commit in ${worktree_dir}; push it manually or rerun with --push"
   fi

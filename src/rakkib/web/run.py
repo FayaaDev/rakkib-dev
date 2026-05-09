@@ -25,6 +25,14 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _message_for_status(status: str) -> str:
+    if status == "succeeded":
+        return "Setup run completed successfully."
+    if status == "canceled":
+        return "Setup run was canceled by the user."
+    return "Setup run exited with errors."
+
+
 def _setup_child_env() -> dict[str, str]:
     """Return a clean environment for browser-triggered setup runs."""
     env = os.environ.copy()
@@ -138,9 +146,41 @@ class WebRunManager:
                 log_path=str(self._log_path),
                 pid=process.pid,
             )
+            self._persist_record_status(self._record)
 
             watcher = threading.Thread(target=self._watch_process, args=(process, log_handle), daemon=True)
             watcher.start()
+            return self._snapshot_locked()
+
+    def cancel(self) -> dict[str, object]:
+        """Terminate the active background process, if one is running."""
+        with self._lock:
+            self._refresh_locked()
+            process = self._process
+            if process is None:
+                return self._snapshot_locked()
+
+            pid = process.pid
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+            canceled_at = _now_iso()
+            self._process = None
+            self._record = RunRecord(
+                status="canceled",
+                message="Setup run was canceled by the user.",
+                started_at=self._record.started_at,
+                finished_at=canceled_at,
+                exit_code=None,
+                command=list(self._record.command),
+                operation=self._record.operation,
+                log_path=str(self._log_path),
+                pid=None,
+            )
+            self._append_log_line(f"[{canceled_at}] Terminated setup run process {pid}")
+            self._persist_record_status(self._record)
             return self._snapshot_locked()
 
     def snapshot(self) -> dict[str, object]:
@@ -176,7 +216,7 @@ class WebRunManager:
                     log_path=str(self._log_path),
                     pid=None,
                 )
-                self._persist_finished_status(self._record)
+                self._persist_record_status(self._record)
 
     def _refresh_locked(self) -> None:
         """Synchronize the stored record if the child exited between polls."""
@@ -202,7 +242,7 @@ class WebRunManager:
             log_path=str(self._log_path),
             pid=None,
         )
-        self._persist_finished_status(self._record)
+        self._persist_record_status(self._record)
 
     def _snapshot_locked(self) -> dict[str, object]:
         """Build the API payload for the current run."""
@@ -234,12 +274,12 @@ class WebRunManager:
             return record
 
         status = state.get("web_deployment.status")
-        if status not in {"succeeded", "failed"}:
+        if status not in {"succeeded", "failed", "canceled"}:
             return record
 
         return RunRecord(
             status=str(status),
-            message="Setup run completed successfully." if status == "succeeded" else "Setup run exited with errors.",
+            message=_message_for_status(str(status)),
             started_at=state.get("web_deployment.started_at"),
             finished_at=state.get("web_deployment.finished_at"),
             exit_code=state.get("web_deployment.exit_code"),
@@ -249,8 +289,8 @@ class WebRunManager:
             pid=None,
         )
 
-    def _persist_finished_status(self, record: RunRecord) -> None:
-        """Persist successful/failed web deployment state across process restarts."""
+    def _persist_record_status(self, record: RunRecord) -> None:
+        """Persist web deployment state across process restarts."""
         try:
             state = State.load(self._state_path)
             state.set("web_deployment.status", record.status)
@@ -258,8 +298,16 @@ class WebRunManager:
             state.set("web_deployment.finished_at", record.finished_at)
             state.set("web_deployment.exit_code", record.exit_code)
             state.set("web_deployment.operation", record.operation)
+            state.set("web_deployment.pid", record.pid)
             state.save(self._state_path)
         except Exception:
+            return
+
+    def _append_log_line(self, line: str) -> None:
+        try:
+            with self._log_path.open("a", encoding="utf-8") as handle:
+                handle.write(f"\n{line}\n")
+        except OSError:
             return
 
     def _command_for_operation(self, operation: str) -> list[str]:

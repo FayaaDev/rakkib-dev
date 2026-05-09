@@ -33,6 +33,10 @@ from rakkib.doctor import (
 )
 from rakkib.interview import run_interview
 from rakkib.secrets import token_urlsafe
+from rakkib.service_catalog import (
+    apply_service_catalog_selection,
+    validate_service_dependencies,
+)
 from rakkib.state import State
 from rakkib.steps import STEP_MODULES, VerificationResult, load_service_registry, selected_service_defs
 from rakkib.steps import postgres as postgres_step
@@ -246,29 +250,7 @@ def _restart_order(registry: dict[str, Any], selected_ids: set[str]) -> list[str
 
 
 def _validate_service_dependencies(selected_ids: set[str], registry: dict[str, Any]) -> list[str]:
-    by_id = {svc["id"]: svc for svc in registry["services"]}
-    errors: list[str] = []
-
-    for svc_id in sorted(selected_ids):
-        svc = by_id[svc_id]
-        missing = []
-        for dep in svc.get("depends_on", []):
-            dep_svc = by_id.get(dep, {})
-            if dep_svc.get("state_bucket") == "always":
-                continue
-            if dep not in selected_ids:
-                missing.append(dep)
-        if missing:
-            errors.append(f"{svc_id} requires {', '.join(missing)}")
-
-    return errors
-
-
-def _default_host_gateway(state: State) -> str:
-    platform = str(state.get("platform", "linux")).lower()
-    if platform == "mac":
-        return "host.docker.internal"
-    return "172.18.0.1"
+    return validate_service_dependencies(selected_ids, registry)
 
 
 def _detect_lan_ip() -> str | None:
@@ -299,59 +281,7 @@ def _checkout_dir(repo_dir: Path) -> Path:
 
 
 def _apply_service_selection(state: State, registry: dict[str, Any], selected_ids: set[str]) -> None:
-    active_ids = set(selected_ids)
-    active_ids.update(
-        svc["id"]
-        for svc in registry["services"]
-        if svc.get("state_bucket") == "always"
-    )
-
-    foundation_ids = [
-        svc["id"]
-        for svc in registry["services"]
-        if svc.get("state_bucket") == "foundation_services" and svc["id"] in active_ids
-    ]
-    optional_ids = [
-        svc["id"]
-        for svc in registry["services"]
-        if svc.get("state_bucket") == "selected_services" and svc["id"] in active_ids
-    ]
-
-    state.set("foundation_services", foundation_ids)
-    state.set("selected_services", optional_ids)
-
-    subdomains: dict[str, str] = {}
-    current_subdomains = state.get("subdomains", {}) or {}
-    secrets_values = dict(state.get("secrets.values", {}) or {})
-    for svc in registry["services"]:
-        svc_id = svc["id"]
-        placeholder = svc.get("subdomain_placeholder")
-        if svc_id not in active_ids:
-            if placeholder:
-                state.delete(placeholder)
-            for key in (svc.get("secrets") or {}).keys():
-                state.delete(key)
-                secrets_values.pop(key, None)
-            for condition in svc.get("conditional_secrets", []):
-                for key in (condition.get("keys") or {}).keys():
-                    state.delete(key)
-                    secrets_values.pop(key, None)
-            continue
-
-        default_subdomain = svc.get("default_subdomain")
-        if not default_subdomain:
-            continue
-
-        subdomain = current_subdomains.get(svc_id) or default_subdomain
-        subdomains[svc_id] = subdomain
-        if placeholder:
-            state.set(placeholder, subdomain)
-
-        if svc.get("host_service") and not state.get("host_gateway"):
-            state.set("host_gateway", _default_host_gateway(state))
-
-    state.set("subdomains", subdomains)
-    state.set("secrets.values", secrets_values)
+    apply_service_catalog_selection(state, registry, selected_ids)
 
 
 def _summarize_service_diff(added: list[str], removed: list[str]) -> None:

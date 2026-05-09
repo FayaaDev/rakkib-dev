@@ -66,6 +66,12 @@ class AuthManager:
             return None
         return self._sessions.get(session_id)
 
+    def revoke_session_for_request(self, request: Request) -> None:
+        """Forget the active cookie-backed session, if one exists."""
+        session_id = request.cookies.get(SESSION_COOKIE_NAME, "")
+        if session_id:
+            self._sessions.pop(session_id, None)
+
     def require_csrf(self, request: Request) -> None:
         """Raise a 403 when a cookie-authenticated mutation lacks a valid CSRF token."""
         expected = self.csrf_token_for_request(request)
@@ -96,6 +102,14 @@ class AuthManager:
             samesite="strict",
             secure=False,
             path="/",
+        )
+
+    def clear_session_cookie(self, response: Response) -> None:
+        """Clear the browser session cookie."""
+        response.delete_cookie(
+            key=SESSION_COOKIE_NAME,
+            path="/",
+            samesite="strict",
         )
 
     def require_api_auth(self, request: Request) -> None:

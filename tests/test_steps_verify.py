@@ -129,6 +129,17 @@ class TestVerify:
         assert result.ok is False
         assert "chmod 600" in result.message
 
+    def test_fails_on_unresolved_rendered_placeholder(self, tmp_path):
+        env_path = tmp_path / "docker" / "n8n" / ".env"
+        env_path.parent.mkdir(parents=True)
+        env_path.write_text("N8N_ENCRYPTION_KEY={{ N8N_ENCRYPTION_KEY }}\n")
+        state = State({"data_root": str(tmp_path)})
+
+        result = verify_step._verify_rendered_templates(state)
+
+        assert result.ok is False
+        assert "N8N_ENCRYPTION_KEY" in result.message
+
 
 class TestRun:
     def test_prints_summary_on_failure(self, capsys):

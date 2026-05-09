@@ -338,6 +338,15 @@ def build_api_router(auth: AuthManager, config: WebRuntimeConfig, run_manager: W
             "auth_enabled": auth.token_auth_enabled,
         }
 
+    @router.post("/session/logout")
+    def session_logout(request: Request, response: Response) -> dict[str, bool]:
+        auth.require_api_auth(request)
+        auth.require_csrf(request)
+        response.headers["Cache-Control"] = "no-store"
+        auth.revoke_session_for_request(request)
+        auth.clear_session_cookie(response)
+        return {"ok": True}
+
     @router.get("/state")
     def state_payload(request: Request, response: Response) -> dict[str, object]:
         auth.require_api_auth(request)
@@ -479,6 +488,14 @@ def build_api_router(auth: AuthManager, config: WebRuntimeConfig, run_manager: W
         except RuntimeError as error:
             raise HTTPException(status_code=500, detail=str(error)) from error
 
+        return serialize_run_state()
+
+    @router.post("/run/cancel")
+    def cancel_run(request: Request, response: Response) -> dict[str, object]:
+        auth.require_api_auth(request)
+        auth.require_csrf(request)
+        response.headers["Cache-Control"] = "no-store"
+        run_manager.cancel()
         return serialize_run_state()
 
     return router

@@ -5,6 +5,7 @@ Each check returns a CheckResult with name, status, blocking flag, and message.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import platform
@@ -54,6 +55,40 @@ PACKAGE_MANAGER_SAFE_ENV = {
     "NEEDRESTART_SUSPEND": "1",
     "UCF_FORCE_CONFFOLD": "1",
 }
+
+CLOUDFLARED_VERSION = "2026.3.0"
+CLOUDFLARED_SHA256 = {
+    ("linux", "amd64"): "4a9e50e6d6d798e90fcd01933151a90bf7edd99a0a55c28ad18f2e16263a5c30",
+    ("linux", "arm64"): "0755ba4cbab59980e6148367fcf53a8f3ec85a97deefd63c2420cf7850769bee",
+}
+
+COMPOSE_VERSION = "v5.1.3"
+COMPOSE_SHA256 = {
+    "x86_64": "a0298760c9772d2c06888fc8703a487c94c3c3b0134adeef830742a2fc7647b4",
+    "aarch64": "e8105a3e687ea7e0b0f81abe4bf9269c8a2801fb72c2b498b5ff2472bc54145f",
+}
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _verify_download_sha256(path: Path, expected: str) -> str | None:
+    try:
+        actual = _sha256_file(path)
+    except OSError as exc:
+        return f"unable to read {path} for checksum verification: {exc}"
+    if actual == expected:
+        return None
+    try:
+        path.unlink()
+    except OSError:
+        pass
+    return f"checksum mismatch for {path.name}: expected {expected}, got {actual}"
 
 
 def _locked_apt_files() -> list[str]:
@@ -628,7 +663,7 @@ def attempt_fix_docker() -> str:
 
     subprocess.run(["sudo", "systemctl", "enable", "--now", "docker"],
                    capture_output=True, text=True)
-    return "Docker installed via get.docker.com."
+    return "Docker installed via get.docker.com; this trusts Docker's install script over TLS."
 
 
 def attempt_fix_compose() -> str:
@@ -654,21 +689,35 @@ def attempt_fix_compose() -> str:
     if not arch:
         return f"Unsupported architecture for compose plugin: {machine}"
     arch_release = "x86_64" if arch == "amd64" else "aarch64"
-    url = f"https://github.com/docker/compose/releases/latest/download/docker-compose-linux-{arch_release}"
+    expected_sha256 = COMPOSE_SHA256.get(arch_release)
+    if not expected_sha256:
+        return f"Unsupported architecture for compose plugin checksum: {arch_release}"
+
+    url = f"https://github.com/docker/compose/releases/download/{COMPOSE_VERSION}/docker-compose-linux-{arch_release}"
     plugin_path = Path("/usr/local/lib/docker/cli-plugins/docker-compose")
 
     try:
-        subprocess.run(["sudo", "mkdir", "-p", str(plugin_path.parent)],
-                       capture_output=True, text=True, check=True)
+        mkdir = subprocess.run(["sudo", "mkdir", "-p", str(plugin_path.parent)],
+                               capture_output=True, text=True)
+        if mkdir.returncode != 0:
+            return f"compose cli-plugins directory creation failed: {mkdir.stderr.strip() or 'unknown error'}"
         result = subprocess.run(
             ["sudo", "curl", "-fsSL", "-o", str(plugin_path), url],
             capture_output=True, text=True,
         )
         if result.returncode != 0:
             return f"compose binary download failed: {result.stderr.strip() or 'unknown error'}"
-        subprocess.run(["sudo", "chmod", "+x", str(plugin_path)],
-                       capture_output=True, text=True)
-        return "docker compose plugin installed from GitHub releases."
+        checksum_error = _verify_download_sha256(plugin_path, expected_sha256)
+        if checksum_error:
+            return f"compose binary download failed verification: {checksum_error}"
+        chmod = subprocess.run(["sudo", "chmod", "+x", str(plugin_path)],
+                               capture_output=True, text=True)
+        if chmod.returncode != 0:
+            return f"compose binary chmod failed: {chmod.stderr.strip() or 'unknown error'}"
+        verify = subprocess.run(["docker", "compose", "version"], capture_output=True, text=True)
+        if verify.returncode != 0:
+            return f"docker compose plugin install verification failed: {verify.stderr.strip() or 'unknown error'}"
+        return f"docker compose plugin {COMPOSE_VERSION} installed from GitHub releases with SHA256 verification."
     except FileNotFoundError as e:
         return f"Required command not found: {e}"
 
@@ -683,7 +732,10 @@ def attempt_fix_cloudflared() -> str:
 
     arch = _normalize_arch(platform.machine()) or "amd64"
     kernel = "darwin" if platform.system() == "Darwin" else "linux"
-    url = f"https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-{kernel}-{arch}"
+    expected_sha256 = CLOUDFLARED_SHA256.get((kernel, arch))
+    if not expected_sha256:
+        return f"Unsupported platform for pinned cloudflared checksum: {kernel}/{arch}"
+    url = f"https://github.com/cloudflare/cloudflared/releases/download/{CLOUDFLARED_VERSION}/cloudflared-{kernel}-{arch}"
     dest = local_bin / "cloudflared"
 
     result = subprocess.run(
@@ -693,8 +745,11 @@ def attempt_fix_cloudflared() -> str:
     )
     if result.returncode != 0:
         return f"cloudflared download failed: {result.stderr.strip() or 'unknown error'}"
+    checksum_error = _verify_download_sha256(dest, expected_sha256)
+    if checksum_error:
+        return f"cloudflared download failed verification: {checksum_error}"
     dest.chmod(0o755)
-    return f"cloudflared downloaded to {dest}"
+    return f"cloudflared {CLOUDFLARED_VERSION} downloaded to {dest} with SHA256 verification"
 
 
 def process_owners_for_ports() -> dict[int, str]:

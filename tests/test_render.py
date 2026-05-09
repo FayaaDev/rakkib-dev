@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from rakkib.render import flatten_state, render_file, render_string, render_text, render_tree
+from rakkib.render import UnresolvedTemplateError, flatten_state, render_file, render_string, render_text, render_tree
 from rakkib.state import State
 
 
@@ -83,6 +83,17 @@ def test_render_file_supports_sibling_imports(tmp_path):
     render_file(src, dst, state)
 
     assert dst.read_text() == "Hello World"
+
+
+def test_render_file_rejects_unresolved_placeholder(tmp_path):
+    src = tmp_path / "test.txt.tmpl"
+    dst = tmp_path / "test.txt"
+    src.write_text("domain={{ MISSING_DOMAIN }}")
+
+    with pytest.raises(UnresolvedTemplateError, match="MISSING_DOMAIN"):
+        render_file(src, dst, State({}))
+
+    assert not dst.exists()
 
 
 def test_render_tree(tmp_path):

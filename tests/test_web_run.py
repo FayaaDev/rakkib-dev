@@ -33,3 +33,39 @@ def test_web_run_manager_builds_service_sync_command(tmp_path):
     command = manager._command_for_operation(web_run.SERVICE_SYNC_OPERATION)
 
     assert command[-1] == "sync-services"
+
+
+def test_web_run_manager_cancel_terminates_child_and_persists_status(tmp_path):
+    class FakeProcess:
+        pid = 12345
+
+        def __init__(self):
+            self.terminated = False
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            self.terminated = True
+
+        def wait(self, timeout=None):
+            return -15
+
+    process = FakeProcess()
+    manager = web_run.WebRunManager(tmp_path)
+    manager._process = process
+    manager._record = web_run.RunRecord(
+        status="running",
+        message="Setup run is in progress.",
+        started_at="2026-05-09T00:00:00Z",
+        command=["rakkib", "pull"],
+        log_path=str(tmp_path / ".rakkib-web-run.log"),
+        pid=process.pid,
+    )
+
+    snapshot = manager.cancel()
+
+    assert process.terminated is True
+    assert snapshot["status"] == "canceled"
+    assert snapshot["pid"] is None
+    assert snapshot["can_start"] is True

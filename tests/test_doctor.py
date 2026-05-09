@@ -471,15 +471,17 @@ class TestAttemptFixCompose:
         mock_run.assert_not_called()
 
     @patch("platform.machine", return_value="x86_64")
+    @patch("rakkib.doctor._command_exists", return_value=False)
     @patch("subprocess.run")
-    def test_mkdir_fails(self, mock_run: MagicMock, _machine: MagicMock):
+    def test_mkdir_fails(self, mock_run: MagicMock, _cmd: MagicMock, _machine: MagicMock):
         mock_run.return_value = MagicMock(returncode=1, stderr="permission denied")
         msg = attempt_fix_compose()
         assert "cli-plugins directory" in msg
 
     @patch("platform.machine", return_value="x86_64")
+    @patch("rakkib.doctor._command_exists", return_value=False)
     @patch("subprocess.run")
-    def test_download_fails(self, mock_run: MagicMock, _machine: MagicMock):
+    def test_download_fails(self, mock_run: MagicMock, _cmd: MagicMock, _machine: MagicMock):
         mock_run.side_effect = [
             MagicMock(returncode=0, stderr=""),
             MagicMock(returncode=1, stderr="network error"),
@@ -488,8 +490,10 @@ class TestAttemptFixCompose:
         assert "download" in msg.lower() and "failed" in msg.lower()
 
     @patch("platform.machine", return_value="x86_64")
+    @patch("rakkib.doctor._sha256_file", return_value="a0298760c9772d2c06888fc8703a487c94c3c3b0134adeef830742a2fc7647b4")
+    @patch("rakkib.doctor._command_exists", return_value=False)
     @patch("subprocess.run")
-    def test_install_verify_fails(self, mock_run: MagicMock, _machine: MagicMock):
+    def test_install_verify_fails(self, mock_run: MagicMock, _cmd: MagicMock, _sha: MagicMock, _machine: MagicMock):
         mock_run.side_effect = [
             MagicMock(returncode=0, stderr=""),
             MagicMock(returncode=0, stderr=""),
@@ -500,21 +504,35 @@ class TestAttemptFixCompose:
         assert "failed" in msg.lower()
 
     def test_unsupported_arch(self):
-        with patch("platform.machine", return_value="mips"):
+        with patch("platform.machine", return_value="mips"), patch("rakkib.doctor._command_exists", return_value=False):
             msg = attempt_fix_compose()
             assert "Unsupported architecture" in msg
 
 
 class TestAttemptFixCloudflared:
     @patch("subprocess.run")
+    @patch("rakkib.doctor._sha256_file", return_value="4a9e50e6d6d798e90fcd01933151a90bf7edd99a0a55c28ad18f2e16263a5c30")
+    @patch("platform.system", return_value="Linux")
+    @patch("platform.machine", return_value="x86_64")
+    @patch("pathlib.Path.chmod")
     @patch("pathlib.Path.mkdir")
-    def test_download_success(self, _mkdir: MagicMock, mock_run: MagicMock):
+    def test_download_success(
+        self,
+        _mkdir: MagicMock,
+        _chmod: MagicMock,
+        _machine: MagicMock,
+        _system: MagicMock,
+        _sha: MagicMock,
+        mock_run: MagicMock,
+    ):
         mock_run.return_value = MagicMock(returncode=0, stderr="")
         msg = attempt_fix_cloudflared()
         assert "downloaded" in msg or "installed" in msg
 
     @patch("subprocess.run")
-    def test_download_failure(self, mock_run: MagicMock):
+    @patch("platform.system", return_value="Linux")
+    @patch("platform.machine", return_value="x86_64")
+    def test_download_failure(self, _machine: MagicMock, _system: MagicMock, mock_run: MagicMock):
         mock_run.return_value = MagicMock(returncode=1, stderr="network error")
         msg = attempt_fix_cloudflared()
         assert "failed" in msg

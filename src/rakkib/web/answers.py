@@ -12,6 +12,12 @@ from typing import Any
 from rakkib.normalize import apply_normalize, eval_when
 from rakkib.schema import FieldDef, QuestionSchema
 from rakkib.state import State, subdomain_placeholder_key
+from rakkib.service_catalog import (
+    apply_service_catalog_selection,
+    mark_deployment_stale,
+    selected_service_ids,
+    validate_service_dependencies,
+)
 from rakkib.steps import load_service_registry
 
 _TEMPLATE_KEY_RE = re.compile(r"\{\{([^{}]+)\}\}")
@@ -66,8 +72,7 @@ def apply_phase_answers(
         _apply_service_catalog_side_effects(working, confirmations)
 
     if schema.phase < 6:
-        working.set("confirmed", False)
-        working.set("web_deployment.status", "stale")
+        mark_deployment_stale(working)
 
     return working
 
@@ -235,99 +240,16 @@ def _validate_text_value(field: FieldDef, value: str) -> str | None:
 def _apply_service_catalog_side_effects(state: State, confirmations: dict[str, bool]) -> None:
     """Apply phase-3 side effects using the same state shape as the CLI."""
     registry = load_service_registry()
-    selected_ids = set(state.get("foundation_services", []) or [])
-    selected_ids.update(state.get("selected_services", []) or [])
+    selected_ids = selected_service_ids(state)
 
-    dependency_errors = _validate_service_dependencies(selected_ids, registry)
+    dependency_errors = validate_service_dependencies(selected_ids, registry)
     if dependency_errors:
         raise PhaseValidationError(
             "Selected services have missing dependencies.",
             {"optional_services": "; ".join(dependency_errors)},
         )
 
-    _apply_service_selection(state, registry, selected_ids)
-
-
-def _validate_service_dependencies(selected_ids: set[str], registry: dict[str, Any]) -> list[str]:
-    """Validate registry dependencies for the selected service set."""
-    by_id = {svc["id"]: svc for svc in registry["services"]}
-    errors: list[str] = []
-
-    for svc_id in sorted(selected_ids):
-        svc = by_id[svc_id]
-        missing = []
-        for dep in svc.get("depends_on", []):
-            dep_svc = by_id.get(dep, {})
-            if dep_svc.get("state_bucket") == "always":
-                continue
-            if dep not in selected_ids:
-                missing.append(dep)
-        if missing:
-            errors.append(f"{svc_id} requires {', '.join(missing)}")
-
-    return errors
-
-
-def _apply_service_selection(state: State, registry: dict[str, Any], selected_ids: set[str]) -> None:
-    """Apply service selection side effects to state."""
-    active_ids = set(selected_ids)
-    active_ids.update(
-        svc["id"]
-        for svc in registry["services"]
-        if svc.get("state_bucket") == "always"
-    )
-
-    foundation_ids = [
-        svc["id"]
-        for svc in registry["services"]
-        if svc.get("state_bucket") == "foundation_services" and svc["id"] in active_ids
-    ]
-    optional_ids = [
-        svc["id"]
-        for svc in registry["services"]
-        if svc.get("state_bucket") == "selected_services" and svc["id"] in active_ids
-    ]
-
-    state.set("foundation_services", foundation_ids)
-    state.set("selected_services", optional_ids)
-
-    subdomains: dict[str, str] = {}
-    current_subdomains = state.get("subdomains", {}) or {}
-    secrets_values = dict(state.get("secrets.values", {}) or {})
-    for svc in registry["services"]:
-        svc_id = svc["id"]
-        if svc_id not in active_ids:
-            state.delete(subdomain_placeholder_key(svc_id))
-            for key in (svc.get("secrets") or {}).keys():
-                state.delete(key)
-                secrets_values.pop(key, None)
-            for condition in svc.get("conditional_secrets", []):
-                for key in (condition.get("keys") or {}).keys():
-                    state.delete(key)
-                    secrets_values.pop(key, None)
-            continue
-
-        default_subdomain = svc.get("default_subdomain")
-        if not default_subdomain:
-            continue
-
-        subdomain = current_subdomains.get(svc_id) or default_subdomain
-        subdomains[svc_id] = subdomain
-        state.set(subdomain_placeholder_key(svc_id), subdomain)
-
-        if svc.get("host_service") and not state.get("host_gateway"):
-            state.set("host_gateway", _default_host_gateway(state))
-
-    state.set("subdomains", subdomains)
-    state.set("secrets.values", secrets_values)
-
-
-def _default_host_gateway(state: State) -> str:
-    """Return the platform-specific host gateway default."""
-    platform = str(state.get("platform", "linux")).lower()
-    if platform == "mac":
-        return "host.docker.internal"
-    return "172.18.0.1"
+    apply_service_catalog_selection(state, registry, selected_ids)
 
 
 def _handle_derived(field: FieldDef, state: State) -> None:
