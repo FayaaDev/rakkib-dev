@@ -43,7 +43,7 @@ from rakkib.postgres_sql import (
 )
 from rakkib.render import render_file
 from rakkib.service_catalog import caddy_enabled, cloudflare_enabled, service_url, validate_registry_internal_access
-from rakkib.secrets import FACTORIES
+from rakkib.secret_utils import FACTORIES
 from rakkib.state import State
 from rakkib.steps import VerificationResult, selected_service_defs
 from rakkib.tui import progress_spinner

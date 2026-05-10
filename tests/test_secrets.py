@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
+import importlib
+import sys
+from pathlib import Path
 
-from rakkib.secrets import (
+from rakkib import secret_utils
+from rakkib.secret_utils import (
     SECRET_GENERATORS,
     compare_digest,
     ensure_secrets,
@@ -42,6 +45,22 @@ def test_token_urlsafe_uses_url_safe_characters():
 def test_compare_digest_matches_equal_values():
     assert compare_digest("same", "same") is True
     assert compare_digest("same", "different") is False
+
+
+def test_stdlib_secrets_not_shadowed_by_package_directory(monkeypatch):
+    package_dir = str(Path(secret_utils.__file__).parent)
+    original = sys.modules.pop("secrets", None)
+
+    monkeypatch.syspath_prepend(package_dir)
+    try:
+        secrets = importlib.import_module("secrets")
+
+        assert secrets.token_hex(1)
+        assert Path(secrets.__file__).resolve() != Path(secret_utils.__file__).resolve()
+    finally:
+        sys.modules.pop("secrets", None)
+        if original is not None:
+            sys.modules["secrets"] = original
 
 
 def test_ensure_secrets_creates_values():

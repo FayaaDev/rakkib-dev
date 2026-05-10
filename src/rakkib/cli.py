@@ -33,7 +33,7 @@ from rakkib.doctor import (
     to_json,
 )
 from rakkib.interview import run_interview
-from rakkib.secrets import token_urlsafe
+from rakkib.secret_utils import token_urlsafe
 from rakkib.service_catalog import caddy_enabled, cloudflare_enabled, deployed_service_urls
 from rakkib.services_cli import (
     apply_planned_subdomains as _apply_planned_subdomains,

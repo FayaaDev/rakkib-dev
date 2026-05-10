@@ -11,7 +11,7 @@ from pathlib import Path
 from rakkib.docker import DockerError, docker_run
 from rakkib.postgres_sql import postgres_identifier, postgres_literal
 from rakkib.render import render_file, render_text
-from rakkib.secrets import ensure_secrets
+from rakkib.secret_utils import ensure_secrets
 from rakkib.state import State
 from rakkib.steps import VerificationResult, load_service_registry, selected_service_defs
 from rakkib.tui import progress_spinner, progress_wait
