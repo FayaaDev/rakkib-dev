@@ -466,7 +466,7 @@ class TestPull:
             return True
 
         with (
-            patch("rakkib.cli._ensure_prereqs", return_value=True),
+            patch("rakkib.cli.ensure_prereqs", return_value=True),
             patch("rakkib.cli._run_steps", side_effect=fake_run_steps),
         ):
             result = runner.invoke(cli, ["pull"], obj={"repo_dir": repo_dir})
@@ -479,6 +479,33 @@ class TestPull:
         assert "https://n8n.example.com" in result.output
         assert "hermes" not in result.output
         assert "https://hermes.example.com" not in result.output
+
+    def test_pull_prints_internal_direct_port_links(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+        state_file = repo_dir / ".fss-state.yaml"
+        state_file.write_text(
+            "confirmed: true\n"
+            "exposure_mode: internal\n"
+            "lan_ip: 192.168.1.50\n"
+            "foundation_services:\n  - homepage\n"
+            "selected_services: []\n"
+        )
+
+        def fake_run_steps(state: State, repo_dir: Path) -> bool:
+            _print_deployed_urls(state)
+            return True
+
+        with (
+            patch("rakkib.cli.ensure_prereqs", return_value=True),
+            patch("rakkib.cli._run_steps", side_effect=fake_run_steps),
+        ):
+            result = runner.invoke(cli, ["pull"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 0
+        assert "homepage" in result.output
+        assert "http://192.168.1.50:13000/" in result.output
 
 
 class TestAdd:

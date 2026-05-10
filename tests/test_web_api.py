@@ -88,3 +88,21 @@ def test_logout_revokes_session_and_clears_cookie(tmp_path):
     assert logout.json()["ok"] is True
     assert "rakkib_session=" in logout.headers["set-cookie"]
     assert session.status_code == 401
+
+
+def test_run_status_returns_internal_deployed_urls(tmp_path):
+    (tmp_path / ".fss-state.yaml").write_text(
+        "confirmed: true\n"
+        "deployed:\n  exists: true\n"
+        "exposure_mode: internal\n"
+        "lan_ip: 192.168.1.50\n"
+        "foundation_services:\n  - homepage\n"
+        "selected_services: []\n"
+    )
+    client = _client(tmp_path)
+    client.post("/api/session/bootstrap", json={"token": "setup-token"})
+
+    response = client.get("/api/run")
+
+    assert response.status_code == 200
+    assert {item["url"] for item in response.json()["deployed_urls"]} == {"http://192.168.1.50:13000/"}

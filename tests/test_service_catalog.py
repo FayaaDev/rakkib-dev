@@ -6,7 +6,10 @@ from rakkib.service_catalog import (
     apply_service_catalog_selection,
     caddy_enabled,
     cloudflare_enabled,
+    deployed_service_urls,
     service_fqdn,
+    service_url,
+    validate_registry_internal_access,
     validate_subdomain_map,
     mark_deployment_stale,
 )
@@ -65,3 +68,41 @@ def test_service_fqdn_uses_custom_or_default_subdomain():
 
     assert service_fqdn(state, {"id": "webdav", "default_subdomain": "webdav"}) == "dav.example.com"
     assert service_fqdn(state, {"id": "vaultwarden", "default_subdomain": "vault"}) == "vault.example.com"
+
+
+def test_service_url_uses_internal_access_for_internal_mode():
+    state = State({"exposure_mode": "internal", "lan_ip": "192.168.1.50"})
+    svc = {"id": "homepage", "internal_access": {"enabled": True, "host_port": 13000, "container_port": 3000}}
+
+    assert service_url(state, svc) == "http://192.168.1.50:13000/"
+
+
+def test_deployed_service_urls_keep_registry_order_for_internal_mode():
+    state = State({"exposure_mode": "internal", "lan_ip": "192.168.1.50", "foundation_services": ["homepage", "nocodb"]})
+    registry = {
+        "services": [
+            {"id": "homepage", "internal_access": {"enabled": True, "host_port": 13000, "container_port": 3000}},
+            {"id": "nocodb", "internal_access": {"enabled": True, "host_port": 13001, "container_port": 8080}},
+        ]
+    }
+
+    assert [row["url"] for row in deployed_service_urls(state, registry)] == [
+        "http://192.168.1.50:13000/",
+        "http://192.168.1.50:13001/",
+    ]
+
+
+def test_registry_internal_access_rejects_duplicate_ports():
+    registry = {
+        "services": [
+            {"id": "one", "internal_access": {"enabled": True, "host_port": 13000, "container_port": 80}},
+            {"id": "two", "internal_access": {"enabled": True, "host_port": 13000, "container_port": 80}},
+        ]
+    }
+
+    try:
+        validate_registry_internal_access(registry)
+    except ValueError as exc:
+        assert "Duplicate internal_access.host_port 13000" in str(exc)
+    else:
+        raise AssertionError("duplicate internal port was accepted")

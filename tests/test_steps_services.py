@@ -158,6 +158,38 @@ class TestRenderEnvExample:
         assert "old_val" in content
 
 
+class TestInternalAccessRendering:
+    def test_internal_mode_injects_declared_direct_port(self, tmp_path: Path):
+        compose_path = tmp_path / "docker-compose.yml"
+        compose_path.write_text(
+            "services:\n"
+            "  nocodb:\n"
+            "    image: nocodb/nocodb:latest\n"
+        )
+        svc = {
+            "id": "nocodb",
+            "internal_access": {"enabled": True, "host_port": 13001, "container_port": 8080},
+        }
+
+        services_step._apply_internal_access_ports(State({"exposure_mode": "internal"}), svc, compose_path)
+
+        rendered = yaml.safe_load(compose_path.read_text())
+        assert rendered["services"]["nocodb"]["ports"] == ["0.0.0.0:13001:8080"]
+
+    def test_cloudflare_mode_does_not_inject_internal_direct_port(self, tmp_path: Path):
+        original = "services:\n  nocodb:\n    image: nocodb/nocodb:latest\n"
+        compose_path = tmp_path / "docker-compose.yml"
+        compose_path.write_text(original)
+        svc = {
+            "id": "nocodb",
+            "internal_access": {"enabled": True, "host_port": 13001, "container_port": 8080},
+        }
+
+        services_step._apply_internal_access_ports(State({"exposure_mode": "cloudflare"}), svc, compose_path)
+
+        assert compose_path.read_text() == original
+
+
 class TestRun:
     @patch("rakkib.steps.services._repo_dir")
     @patch("rakkib.steps.services.compose_up")
@@ -841,6 +873,26 @@ class TestRemoveSingleService:
 
 
 class TestVerify:
+    @patch("rakkib.steps.services.subprocess.run")
+    def test_smoke_check_uses_internal_direct_port_url(self, mock_run: MagicMock):
+        mock_run.return_value = MagicMock(returncode=0, stdout="Welcome", stderr="")
+        registry = {
+            "services": [
+                {
+                    "id": "homepage",
+                    "smoke": {"path": "/", "expected_text": "Welcome"},
+                    "internal_access": {"enabled": True, "host_port": 13000, "container_port": 3000},
+                }
+            ]
+        }
+        state = State({"exposure_mode": "internal", "lan_ip": "192.168.1.50"})
+
+        with patch("rakkib.steps.services._load_registry", return_value=registry):
+            result = services_step.smoke_check(state, "homepage")
+
+        assert result.ok is True
+        assert mock_run.call_args.args[0][4] == "http://192.168.1.50:13000/"
+
     @patch("rakkib.steps.services.subprocess.run")
     def test_host_service_uses_monitoring_path(self, mock_run: MagicMock):
         mock_run.return_value = MagicMock(returncode=0)
