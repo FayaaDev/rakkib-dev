@@ -11,6 +11,9 @@ services:
     depends_on: []
     host_service: false
     host_port: true
+    data_dirs:
+      - data/caddy/data
+      - data/caddy/config
     notes: "Reverse proxy. Installed only for Cloudflare exposure."
 
   - id: cloudflared
@@ -29,6 +32,8 @@ services:
       - ADMIN_GID
     depends_on: []
     host_service: false
+    data_dirs:
+      - data/cloudflared
     notes: "Cloudflare tunnel. Installed only for Cloudflare exposure. Step 3 may pause for guided Cloudflare login approval."
 
   - id: postgres
@@ -44,6 +49,8 @@ services:
     depends_on: []
     host_service: false
     host_port: true
+    data_dirs:
+      - data/postgres/data
     secrets:
       POSTGRES_PASSWORD:
         factory: password
@@ -84,6 +91,8 @@ services:
       db: nocodb_db
       password_key: NOCODB_DB_PASS
       display_name: NocoDB
+    data_dirs:
+      - data/nocodb
     homepage:
       category: Infrastructure
       name: NocoDB
@@ -160,6 +169,8 @@ services:
         value: admin
       UPTIME_KUMA_ADMIN_PASS:
         factory: password
+    data_dirs:
+      - data/uptime-kuma
     homepage:
       category: Infrastructure
       name: Uptime Kuma
@@ -198,6 +209,8 @@ services:
       container_port: 5001
     caddy:
       template: dockge-public.caddy.tmpl
+    data_dirs:
+      - data/dockge
     homepage:
       category: Infrastructure
       name: Dockge
@@ -394,6 +407,10 @@ services:
       container_port: 8096
     caddy:
       template: jellyfin-public.caddy.tmpl
+    data_dirs:
+      - data/jellyfin/config
+      - data/jellyfin/cache
+      - data/jellyfin/media
     homepage:
       category: Media
       name: Jellyfin

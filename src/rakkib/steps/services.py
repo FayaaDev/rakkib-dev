@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import functools
+import os
 import socket
 import shutil
 import subprocess
@@ -159,6 +160,7 @@ def _render_env_example(
 
     _preserve_env_keys_from_file(state, dst_path, preserve_keys)
 
+    _ensure_writable_output(dst_path)
     render_file(tmpl_path, dst_path, state)
     dst_path.chmod(0o600)
 
@@ -319,9 +321,59 @@ def _publish_cloudflare_service(state: State, svc: dict) -> None:
     cloudflare.publish_service(state, svc)
 
 
+def _sudo_run(command: list[str]) -> subprocess.CompletedProcess[str]:
+    """Run a non-interactive sudo command for host path repairs."""
+    return subprocess.run(["sudo", "-n", *command], capture_output=True, text=True)
+
+
+def _chown_path(path: Path, uid: int, gid: int, *, recursive: bool) -> None:
+    args = ["chown"]
+    if recursive:
+        args.append("-R")
+    args.extend([f"{uid}:{gid}", str(path)])
+
+    if os.geteuid() == 0:
+        subprocess.run(args, check=True, capture_output=True, text=True)
+        return
+
+    result = _sudo_run(args)
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "permission denied"
+        raise RuntimeError(
+            f"Cannot repair ownership for {path}: {detail}. "
+            "Run `rakkib auth` in the terminal that started the web session, then retry."
+        )
+
+
+def _ensure_writable_dir(path: Path) -> None:
+    """Create a service data dir and repair stale root-owned bind mounts."""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        parent = path.parent
+        result = _sudo_run(["mkdir", "-p", str(path)])
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip() or "permission denied"
+            raise RuntimeError(
+                f"Cannot create service data directory {path}: {detail}. "
+                f"Ensure {parent} is writable or run `rakkib auth`, then retry."
+            )
+
+    if os.access(path, os.W_OK | os.X_OK):
+        return
+
+    _chown_path(path, os.geteuid(), os.getegid(), recursive=True)
+
+
+def _ensure_writable_output(path: Path) -> None:
+    _ensure_writable_dir(path.parent)
+    if path.exists() and not os.access(path, os.W_OK):
+        _chown_path(path, os.geteuid(), os.getegid(), recursive=False)
+
+
 def _prepare_service_data(state: State, svc: dict, data_root: Path) -> None:
     for relative_dir in svc.get("data_dirs", []):
-        (data_root / relative_dir).mkdir(parents=True, exist_ok=True)
+        _ensure_writable_dir(data_root / relative_dir)
 
     chown = svc.get("chown")
     if not chown or state.get("platform", "linux") != "linux":
@@ -330,21 +382,7 @@ def _prepare_service_data(state: State, svc: dict, data_root: Path) -> None:
     service_data_root = data_root / "data" / svc["id"]
     if not service_data_root.exists():
         return
-
-    result = subprocess.run(
-        [
-            "sudo",
-            "-n",
-            "chown",
-            "-R",
-            f"{chown['uid']}:{chown['gid']}",
-            str(service_data_root),
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip())
+    _chown_path(service_data_root, int(chown["uid"]), int(chown["gid"]), recursive=True)
 
 
 def _render_extra_templates(state: State, svc: dict, repo: Path, data_root: Path) -> None:
@@ -355,7 +393,7 @@ def _render_extra_templates(state: State, svc: dict, repo: Path, data_root: Path
             raise FileNotFoundError(
                 f"Service {svc['id']} references missing extra_templates source: {src}"
             )
-        dst.parent.mkdir(parents=True, exist_ok=True)
+        _ensure_writable_output(dst)
         render_file(src, dst, state)
 
 
@@ -559,6 +597,7 @@ def _deploy_single_service(state: State, svc: dict, repo: Path, data_root: Path)
         return
 
     svc_dir = data_root / "docker" / svc_id
+    _ensure_writable_dir(svc_dir)
 
     _prepare_service_data(state, svc, data_root)
     _ensure_internal_port_available(state, svc, data_root)
@@ -576,6 +615,7 @@ def _deploy_single_service(state: State, svc: dict, repo: Path, data_root: Path)
     compose_tmpl = repo / "templates" / "docker" / svc_id / "docker-compose.yml.tmpl"
     if compose_tmpl.exists():
         compose_path = svc_dir / "docker-compose.yml"
+        _ensure_writable_output(compose_path)
         render_file(compose_tmpl, compose_path, state)
         _apply_internal_access_ports(state, svc, compose_path)
 

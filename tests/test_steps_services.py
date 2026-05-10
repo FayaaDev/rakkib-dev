@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -15,6 +16,29 @@ from rakkib.state import State
 from rakkib.steps import selected_service_defs
 from rakkib.steps import VerificationResult
 from rakkib.steps import services as services_step
+
+
+def test_registry_data_dirs_cover_compose_data_mounts():
+    repo = Path(__file__).resolve().parents[1] / "src" / "rakkib" / "data"
+    registry = yaml.safe_load((repo / "registry.yaml").read_text())
+    services = {svc["id"]: svc for svc in registry["services"]}
+    data_mount = re.compile(r"\{\{DATA_ROOT\}\}/(data/[^:\s]+)")
+    missing: dict[str, list[str]] = {}
+
+    for compose_tmpl in sorted((repo / "templates" / "docker").glob("*/docker-compose.yml.tmpl")):
+        svc_id = compose_tmpl.parent.name
+        declared = set(services.get(svc_id, {}).get("data_dirs") or [])
+        for mount in sorted(set(data_mount.findall(compose_tmpl.read_text()))):
+            parts = mount.split("/")
+            candidates = [mount]
+            if len(parts) >= 2:
+                candidates.append("/".join(parts[:2]))
+            if len(parts) >= 3:
+                candidates.append("/".join(parts[:3]))
+            if not any(candidate in declared for candidate in candidates):
+                missing.setdefault(svc_id, []).append(mount)
+
+    assert missing == {}
 
 
 @pytest.fixture
@@ -715,6 +739,19 @@ class TestSpecialHandlers:
         sync_script = tmp_path / "data" / "uptime-kuma" / "sync-monitors.cjs"
         assert sync_script.exists()
         assert any("uptime-kuma" in str(call.args[0]) for call in mock_run.call_args_list)
+
+    @patch("rakkib.hooks.services.subprocess.run")
+    @patch("rakkib.hooks.services.os.access", return_value=False)
+    def test_write_text_repairs_unwritable_artifact_parent(self, _mock_access, mock_run, tmp_path):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        target = tmp_path / "data" / "uptime-kuma" / "rakkib-monitors.json"
+        target.parent.mkdir(parents=True)
+
+        changed = service_hooks._write_text_if_changed(target, "{}\n")
+
+        assert changed is True
+        assert target.read_text() == "{}\n"
+        assert mock_run.call_args.args[0][:4] == ["sudo", "-n", "chown", "-R"]
 
     @patch("rakkib.hooks.services.docker_run")
     def test_service_postgres_login_preflight_uses_service_contract(self, mock_run):

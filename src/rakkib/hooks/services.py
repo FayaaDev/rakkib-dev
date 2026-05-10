@@ -151,12 +151,48 @@ def codex_uninstall(ctx: HookContext, *legacy_args) -> None:
 
 
 def _write_text_if_changed(path: Path, content: str) -> bool:
+    _ensure_writable_output(path)
     existing = path.read_text() if path.exists() else None
     if existing == content:
         return False
-    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content)
     return True
+
+
+def _sudo_run(command: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["sudo", "-n", *command], capture_output=True, text=True)
+
+
+def _repair_ownership(path: Path) -> None:
+    uid = os.geteuid()
+    gid = os.getegid()
+    command = ["chown", "-R", f"{uid}:{gid}", str(path)]
+
+    if os.geteuid() == 0:
+        subprocess.run(command, check=True, capture_output=True, text=True)
+        return
+
+    result = _sudo_run(command)
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "permission denied"
+        raise RuntimeError(
+            f"Cannot write generated service artifact {path}: {detail}. "
+            "Run `rakkib auth` in the terminal that started the web session, then retry."
+        )
+
+
+def _ensure_writable_output(path: Path) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        _repair_ownership(path.parent)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+    if not os.access(path.parent, os.W_OK | os.X_OK):
+        _repair_ownership(path.parent)
+
+    if path.exists() and not os.access(path, os.W_OK):
+        _repair_ownership(path)
 
 
 def _restart_service(data_root: Path, svc_id: str) -> None:
@@ -652,6 +688,7 @@ def sync_shared_artifacts(state, repo: Path, data_root: Path, registry: dict) ->
         _write_text_if_changed(kuma_data_dir / "rakkib-monitors.json", payload)
 
         sync_script = repo / "templates" / "docker" / "uptime-kuma" / "sync-monitors.cjs.tmpl"
+        _ensure_writable_output(kuma_data_dir / "sync-monitors.cjs")
         render_file(sync_script, kuma_data_dir / "sync-monitors.cjs", state)
 
         if container_running("uptime-kuma"):
