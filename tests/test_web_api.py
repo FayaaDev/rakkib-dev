@@ -78,6 +78,26 @@ def test_cookie_authenticated_patch_accepts_csrf_token(tmp_path):
     assert response.json()["state"]["domain"] == "example.com"
 
 
+def test_web_state_patch_writes_checkout_root_state_from_package_dir(tmp_path):
+    checkout = tmp_path / "Rakkib"
+    package_dir = checkout / "src" / "rakkib"
+    package_dir.mkdir(parents=True)
+    (checkout / ".git").mkdir()
+    client = _client(package_dir)
+    bootstrap = client.post("/api/session/bootstrap", json={"token": "setup-token"})
+
+    response = client.patch(
+        "/api/state",
+        headers={"X-CSRF-Token": bootstrap.json()["csrf_token"]},
+        json={"state": {"domain": "example.com"}},
+    )
+
+    assert response.status_code == 200
+    assert (checkout / ".fss-state.yaml").exists()
+    assert not (package_dir / ".fss-state.yaml").exists()
+    assert State.load(checkout / ".fss-state.yaml").get("domain") == "example.com"
+
+
 def test_logout_revokes_session_and_clears_cookie(tmp_path):
     client = _client(tmp_path)
     bootstrap = client.post("/api/session/bootstrap", json={"token": "setup-token"})

@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from rakkib.schema import load_all_schemas
-from rakkib.state import State, _coerce_compare, _deep_merge, _eval_when
+from rakkib.state import State, _coerce_compare, _deep_merge, _eval_when, default_state_path
 
 QUESTIONS_DIR = Path(__file__).resolve().parent.parent / "src" / "rakkib" / "data" / "questions"
 
@@ -303,6 +303,19 @@ def test_state_load_missing_file(tmp_path):
     path = tmp_path / "nonexistent.yaml"
     state = State.load(path)
     assert state.to_dict() == {}
+
+
+def test_default_state_path_resolves_checkout_root_from_package_dir(tmp_path):
+    checkout = tmp_path / "Rakkib"
+    package_dir = checkout / "src" / "rakkib"
+    package_dir.mkdir(parents=True)
+    (checkout / ".git").mkdir()
+
+    assert default_state_path(package_dir) == checkout / ".fss-state.yaml"
+
+
+def test_default_state_path_uses_given_dir_without_checkout(tmp_path):
+    assert default_state_path(tmp_path) == tmp_path / ".fss-state.yaml"
 
 
 def test_state_load_empty_file(tmp_path):

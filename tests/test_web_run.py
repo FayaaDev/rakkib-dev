@@ -38,6 +38,18 @@ def test_web_run_manager_builds_service_sync_command(tmp_path):
     assert command[-1] == "sync-services"
 
 
+def test_web_run_manager_uses_checkout_root_for_state_and_cwd(tmp_path):
+    checkout = tmp_path / "Rakkib"
+    package_dir = checkout / "src" / "rakkib"
+    package_dir.mkdir(parents=True)
+    (checkout / ".git").mkdir()
+
+    manager = web_run.WebRunManager(package_dir)
+
+    assert manager._repo_dir == checkout
+    assert manager._state_path == checkout / ".fss-state.yaml"
+
+
 def test_web_run_manager_cancel_terminates_child_and_persists_status(tmp_path):
     class FakeProcess:
         pid = 12345

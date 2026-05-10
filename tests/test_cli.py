@@ -254,6 +254,25 @@ class TestStatus:
         assert "n8n" in result.output
         assert "vergo_terminal" in result.output
 
+    def test_status_reads_checkout_state_from_package_repo_dir(self, tmp_path: Path):
+        runner = CliRunner()
+        checkout = tmp_path / "repo"
+        package_dir = checkout / "src" / "rakkib"
+        package_dir.mkdir(parents=True)
+        (checkout / ".git").mkdir()
+        (checkout / ".fss-state.yaml").write_text(
+            "confirmed: true\n"
+            "domain: example.com\n"
+            "data_root: /srv\n"
+            "foundation_services: []\n"
+            "selected_services: []\n"
+        )
+
+        result = runner.invoke(cli, ["status"], obj={"repo_dir": package_dir})
+
+        assert result.exit_code == 0
+        assert "example.com" in result.output
+
 
 class TestUpdate:
     def test_update_success_existing_runtime_branch(self, tmp_path: Path):
