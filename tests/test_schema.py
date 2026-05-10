@@ -67,11 +67,17 @@ def test_phase_2_identity_fields():
 
     domain = field_map["domain"]
     assert domain.type == "text"
+    assert domain.when == "exposure_mode == cloudflare"
     assert domain.validate["pattern"] == r"^(?!https?://).+\..+$"
 
     exposure = field_map["exposure_mode"]
     assert exposure.type == "single_select"
     assert exposure.canonical_values == ["internal", "cloudflare"]
+
+    internal_domain = field_map["internal_domain"]
+    assert internal_domain.type == "derived"
+    assert internal_domain.when == "exposure_mode == internal"
+    assert internal_domain.value == "localhost"
 
     zone = field_map["zone_in_cloudflare"]
     assert zone.when == "exposure_mode == cloudflare"

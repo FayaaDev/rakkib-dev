@@ -87,7 +87,7 @@ sudo rakkib privileged fix-repo-owner --state .fss-state.yaml
 
 - Ubuntu 24.04 is the tested deployment target (macOS supported for development)
 - Normal sudo-capable admin user — do not run as root
-- A domain on Cloudflare for public HTTPS routes
+- A domain on Cloudflare only when using public HTTPS routes
 - Python 3.9+ (the installer handles venv and pip)
 
 ## License

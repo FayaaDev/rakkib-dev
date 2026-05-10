@@ -36,6 +36,7 @@ def test_layout_run_creates_service_directories(tmp_path):
         {
             "data_root": str(tmp_path),
             "platform": "mac",
+            "exposure_mode": "cloudflare",
             "foundation_services": ["nocodb"],
             "selected_services": ["n8n"],
         }
@@ -47,6 +48,25 @@ def test_layout_run_creates_service_directories(tmp_path):
     assert (tmp_path / "docker" / "postgres").is_dir()
     assert (tmp_path / "docker" / "nocodb").is_dir()
     assert (tmp_path / "docker" / "n8n").is_dir()
+
+
+def test_layout_run_skips_caddy_and_cloudflared_for_internal_mode(tmp_path):
+    state = State(
+        {
+            "data_root": str(tmp_path),
+            "platform": "mac",
+            "exposure_mode": "internal",
+            "foundation_services": ["nocodb"],
+            "selected_services": [],
+        }
+    )
+    layout.run(state)
+
+    assert not (tmp_path / "docker" / "caddy").exists()
+    assert not (tmp_path / "docker" / "cloudflared").exists()
+    assert not (tmp_path / "data" / "cloudflared").exists()
+    assert (tmp_path / "docker" / "postgres").is_dir()
+    assert (tmp_path / "docker" / "nocodb").is_dir()
 
 
 def test_layout_run_sudo_on_linux(tmp_path):

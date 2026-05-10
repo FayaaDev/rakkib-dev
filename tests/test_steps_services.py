@@ -187,6 +187,35 @@ class TestRun:
 
     @patch("rakkib.steps.services._repo_dir")
     @patch("rakkib.steps.services.compose_up")
+    @patch("rakkib.steps.services.health_check", return_value=True)
+    @patch("rakkib.steps.services._reload_caddy")
+    def test_internal_mode_deploys_without_caddy_routes(
+        self,
+        mock_reload: MagicMock,
+        _mock_health: MagicMock,
+        mock_compose: MagicMock,
+        mock_repo: MagicMock,
+        fake_repo: Path,
+        tmp_path: Path,
+    ):
+        mock_repo.return_value = fake_repo
+        data_root = tmp_path / "srv"
+        state = State({
+            "exposure_mode": "internal",
+            "foundation_services": ["nocodb"],
+            "selected_services": [],
+            "data_root": str(data_root),
+            "backup_dir": str(data_root / "backups"),
+        })
+
+        services_step.run(state)
+
+        mock_compose.assert_called_once()
+        mock_reload.assert_not_called()
+        assert not (data_root / "docker" / "caddy" / "routes" / "nocodb.caddy").exists()
+
+    @patch("rakkib.steps.services._repo_dir")
+    @patch("rakkib.steps.services.compose_up")
     @patch("rakkib.steps.services._reload_caddy")
     @patch("rakkib.steps.services._run_named_hooks")
     def test_skips_host_service(
@@ -252,6 +281,7 @@ class TestRun:
         data_root = tmp_path / "srv"
         state = State(
             {
+                "exposure_mode": "cloudflare",
                 "data_root": str(data_root),
                 "domain": "example.com",
                 "docker_net": "caddy_net",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from rakkib.service_catalog import (
     apply_service_catalog_selection,
+    caddy_enabled,
     cloudflare_enabled,
     service_fqdn,
     validate_subdomain_map,
@@ -51,6 +52,12 @@ def test_validate_subdomain_map_rejects_duplicates_and_invalid_labels():
 def test_cloudflare_enabled_defaults_existing_cloudflare_installs_to_true():
     assert cloudflare_enabled(State({"cloudflare": {"auth_method": "browser_login"}})) is True
     assert cloudflare_enabled(State({"exposure_mode": "internal", "cloudflare": {"auth_method": "browser_login"}})) is False
+
+
+def test_caddy_enabled_only_skips_explicit_internal_mode():
+    assert caddy_enabled(State({})) is True
+    assert caddy_enabled(State({"exposure_mode": "cloudflare"})) is True
+    assert caddy_enabled(State({"exposure_mode": "internal"})) is False
 
 
 def test_service_fqdn_uses_custom_or_default_subdomain():

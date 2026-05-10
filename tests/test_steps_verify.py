@@ -29,6 +29,28 @@ class TestCollectVerifications:
         assert len(results) == 6
         assert all(r.ok for r in results)
 
+    def test_internal_mode_skips_caddy_and_cloudflare(self):
+        state = State({"exposure_mode": "internal"})
+        caddy_module = MagicMock(verify=MagicMock(return_value=VerificationResult.failure("caddy", "should skip")))
+        cloudflare_module = MagicMock(verify=MagicMock(return_value=VerificationResult.failure("cloudflare", "should skip")))
+        with patch.dict(
+            "sys.modules",
+            {
+                "rakkib.steps.layout": MagicMock(verify=lambda s: VerificationResult.success("layout")),
+                "rakkib.steps.caddy": caddy_module,
+                "rakkib.steps.cloudflare": cloudflare_module,
+                "rakkib.steps.postgres": MagicMock(verify=lambda s: VerificationResult.success("postgres")),
+                "rakkib.steps.services": MagicMock(verify=lambda s: VerificationResult.success("services")),
+                "rakkib.steps.cron": MagicMock(verify=lambda s: VerificationResult.success("cron")),
+            },
+        ):
+            results = verify_step._collect_verifications(state)
+
+        assert any(r.step == "caddy" and r.ok and "skipped" in r.message for r in results)
+        assert any(r.step == "cloudflare" and r.ok and "skipped" in r.message for r in results)
+        caddy_module.verify.assert_not_called()
+        cloudflare_module.verify.assert_not_called()
+
     def test_handles_import_error(self):
         state = State({})
         real_import = __import__
