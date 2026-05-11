@@ -2536,7 +2536,8 @@ services:
     default_subdomain: esphome
     subdomain_key: esphome
     subdomain_placeholder: ESPHOME_SUBDOMAIN
-    env_keys: []
+    env_keys:
+      - TZ
     depends_on: []
     host_service: false
     host_port: false

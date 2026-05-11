@@ -6,7 +6,7 @@ services:
     env_file:
       - .env
     environment:
-      - TZ={{TIMEZONE}}
+      - TZ=${TZ:-UTC}
     volumes:
       - {{DATA_ROOT}}/data/esphome/config:/config
     networks:
