@@ -1451,6 +1451,56 @@ services:
       remove:
         - cloudflare_dns_delete
 
+  - id: grafana
+    state_bucket: selected_services
+    required: false
+    optional: true
+    image: grafana/grafana:12.1.1
+    default_port: 3000
+    default_subdomain: grafana
+    subdomain_key: grafana
+    subdomain_placeholder: GRAFANA_SUBDOMAIN
+    env_keys:
+      - GRAFANA_ADMIN_PASSWORD
+    depends_on: []
+    host_service: false
+    host_port: false
+    internal_access:
+      enabled: true
+      host_port: 13045
+      container_port: 3000
+    caddy:
+      template: grafana-public.caddy.tmpl
+    data_dirs:
+      - data/grafana
+    chown:
+      uid: 472
+      gid: 472
+    secrets:
+      GRAFANA_ADMIN_PASSWORD:
+        factory: password
+    homepage:
+      category: Monitoring
+      name: Grafana
+      description: Metrics dashboards and visualisation
+      icon: grafana.png
+    monitoring:
+      enabled: true
+      type: http
+      target: public_url
+      path: /
+      interval: 60
+      timeout: 10
+      retries: 3
+    smoke:
+      path: /
+      expected_text: Grafana
+      timeout: 60
+    notes: "Metrics dashboard and visualisation platform. Optional. Uses local SQLite storage under data/grafana; log in as admin with the generated GRAFANA_ADMIN_PASSWORD."
+    hooks:
+      remove:
+        - cloudflare_dns_delete
+
   - id: homarr
     state_bucket: selected_services
     required: false
