@@ -2321,6 +2321,48 @@ services:
       remove:
         - cloudflare_dns_delete
 
+  - id: memos
+    state_bucket: selected_services
+    required: false
+    optional: true
+    image: neosmemo/memos:stable
+    default_port: 5230
+    default_subdomain: memos
+    subdomain_key: memos
+    subdomain_placeholder: MEMOS_SUBDOMAIN
+    env_keys: []
+    depends_on: []
+    host_service: false
+    host_port: false
+    internal_access:
+      enabled: true
+      host_port: 13052
+      container_port: 5230
+    caddy:
+      template: memos-public.caddy.tmpl
+    data_dirs:
+      - data/memos
+    homepage:
+      category: Documents
+      name: Memos
+      description: Lightweight note-taking
+      icon: memos.png
+    monitoring:
+      enabled: true
+      type: http
+      target: public_url
+      path: /
+      interval: 60
+      timeout: 10
+      retries: 3
+    smoke:
+      path: /
+      expected_text: Memos
+    notes: "Self-hosted note-taking app. Optional. Stores SQLite database and uploaded assets under data/memos."
+    hooks:
+      remove:
+        - cloudflare_dns_delete
+
   - id: gitea
     state_bucket: selected_services
     required: false

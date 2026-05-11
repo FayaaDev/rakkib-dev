@@ -227,6 +227,11 @@ service_catalog:
       numeric_alias: 59
       subdomain_key: notemark
       default_subdomain: notemark
+    - slug: memos
+      label: Memos
+      numeric_alias: 67
+      subdomain_key: memos
+      default_subdomain: memos
     - slug: gitea
       label: Gitea
       numeric_alias: 31
@@ -333,7 +338,7 @@ fields:
     type: multi_select
     selection_mode: add_to_empty
     prompt: "Service categories: type service slugs to add (e.g. `n8n immich filebrowser`); numeric aliases like `6 8 12` are also accepted, or press Enter to skip all:"
-    canonical_values: [n8n, immich, transfer, jellyfin, plex, openclaw, claude, codex, anse, filebrowser, webdav, it-tools, cyberchef, drawio, excalidraw, homer, dozzle, grafana, homarr, glance, dashy, beszel, glances, freshrss, openbooks, actual-budget, wallos, rsshub, vaultwarden, adguard, whoogle, forgejo, privatebin, stirling-pdf, mealie, dailytxt, esphome, notemark, gitea, whoami, pairdrop, moodist, hermes-agent, cheshire-cat-ai, flowise, serge, chatpad, lobe-chat, open-webui, ollama-cpu, ollama-amd, ollama-nvidia, autoheal, watchtower, matter-server]
+    canonical_values: [n8n, immich, transfer, jellyfin, plex, openclaw, claude, codex, anse, filebrowser, webdav, it-tools, cyberchef, drawio, excalidraw, homer, dozzle, grafana, homarr, glance, dashy, beszel, glances, freshrss, openbooks, actual-budget, wallos, rsshub, vaultwarden, adguard, whoogle, forgejo, privatebin, stirling-pdf, mealie, dailytxt, esphome, notemark, memos, gitea, whoami, pairdrop, moodist, hermes-agent, cheshire-cat-ai, flowise, serge, chatpad, lobe-chat, open-webui, ollama-cpu, ollama-amd, ollama-nvidia, autoheal, watchtower, matter-server]
     numeric_aliases:
       "6": n8n
       "7": immich
@@ -373,6 +378,7 @@ fields:
       "55": dailytxt
       "62": esphome
       "59": notemark
+      "67": memos
       "31": gitea
       "32": whoami
       "33": pairdrop
@@ -520,6 +526,7 @@ Lifestyle:
 
 Documents:
   [ ] 59 Note Mark     — Markdown notes app     →  notemark.<domain>
+  [ ] 67 Memos         — note-taking app        →  memos.<domain>
 
 Host Addons:
   [ ] 11 VErgo Terminal — zsh, prompt, completions, CLI UX
@@ -626,6 +633,7 @@ subdomains:
   dailytxt: dailytxt
   esphome: esphome
   notemark: notemark
+  memos: memos
 ```
 
 Record only subdomains for services that are actually selected (foundation or optional).
@@ -680,3 +688,4 @@ During rendering, flatten these values into service placeholders:
 - `subdomains.dailytxt` -> `{{DAILYTXT_SUBDOMAIN}}`
 - `subdomains.esphome` -> `{{ESPHOME_SUBDOMAIN}}`
 - `subdomains.notemark` -> `{{NOTEMARK_SUBDOMAIN}}`
+- `subdomains.memos` -> `{{MEMOS_SUBDOMAIN}}`
