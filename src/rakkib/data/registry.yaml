@@ -2273,6 +2273,54 @@ services:
       remove:
         - cloudflare_dns_delete
 
+  - id: notemark
+    state_bucket: selected_services
+    required: false
+    optional: true
+    image: ghcr.io/enchant97/note-mark-aio:0.19.4
+    default_port: 8080
+    default_subdomain: notemark
+    subdomain_key: notemark
+    subdomain_placeholder: NOTEMARK_SUBDOMAIN
+    env_keys:
+      - NOTEMARK_JWT_SECRET
+    depends_on: []
+    host_service: false
+    host_port: false
+    internal_access:
+      enabled: true
+      host_port: 13048
+      container_port: 8080
+    caddy:
+      template: notemark-public.caddy.tmpl
+    data_dirs:
+      - data/notemark
+    secrets:
+      NOTEMARK_JWT_SECRET:
+        factory: password
+        length: 48
+    homepage:
+      category: Documents
+      name: Note Mark
+      description: Markdown notes app
+      icon: markdown.png
+    monitoring:
+      enabled: true
+      type: http
+      target: public_url
+      path: /
+      interval: 60
+      timeout: 10
+      retries: 3
+    smoke:
+      path: /
+      expected_text: Note Mark
+      timeout: 60
+    notes: "Fast web-based Markdown notes app. Optional. Stores SQLite database, notes, and uploaded assets under data/notemark. Internal signups are enabled initially for first-user setup."
+    hooks:
+      remove:
+        - cloudflare_dns_delete
+
   - id: gitea
     state_bucket: selected_services
     required: false
