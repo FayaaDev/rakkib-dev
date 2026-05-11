@@ -32,8 +32,10 @@ Status meanings:
 | Dashy | `dashy` |
 | Dozzle | `dozzle` |
 | Glances | `glances` |
+| Grafana | `grafana` |
 
 Validation notes: Glances validated on the test server in internal exposure mode with installer-first targeted add, direct LAN port `13042`, no Caddy route, `rakkib smoke glances`, `rakkib remove glances --yes`, and successful re-add.
+Validation notes: Grafana validated on the test server in internal exposure mode with installer-first targeted add, direct LAN port `13045`, no Caddy route, `rakkib smoke grafana`, `rakkib remove grafana --yes`, and successful re-add.
 | OpenBooks | `openbooks` |
 | DailyTxT | `dailytxt` |
 

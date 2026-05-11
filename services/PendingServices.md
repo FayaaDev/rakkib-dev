@@ -11,9 +11,6 @@ Difficulty order:
 
 ## Non-Implemented Services
 
-### Monitoring
-- [ ] Grafana (B)
-
 ### File Sync And Sharing
 - [ ] Pingvin Share (B)
 
