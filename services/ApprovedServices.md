@@ -29,6 +29,8 @@ Status meanings:
 | PrivateBin | `privatebin` | Tested on the bare-metal server with installer-first runtime sync, `rakkib add privatebin --yes`, readiness wait, `rakkib smoke privatebin`, remove, re-add, and re-smoke in Cloudflare mode. |
 | Homer | `homer` | Tested on the bare-metal server with installer-first runtime sync, `rakkib add homer --yes`, readiness wait, `rakkib smoke homer`, remove, re-add, and re-smoke in Cloudflare mode. |
 | Glance | `glance` | Tested on the bare-metal server with installer-first runtime sync, `rakkib add glance --yes`, readiness wait, `rakkib smoke glance`, remove, re-add, and re-smoke in Cloudflare mode. |
+| Dashy | `dashy` | Tested on the bare-metal server with installer-first runtime sync, `rakkib add dashy --yes`, readiness wait, `rakkib smoke dashy`, remove, re-add, and re-smoke in Cloudflare mode. |
+| Dozzle | `dozzle` | Tested on the bare-metal server with installer-first runtime sync, `rakkib add dozzle --yes`, readiness wait, `rakkib smoke dozzle`, remove, re-add, and re-smoke in Cloudflare mode. |
 
 ## Implemented, Pending Testing
 
@@ -52,8 +54,6 @@ Status meanings:
 | Flowise | `flowise` | selected_services |
 | Serge | `serge` | selected_services |
 | Anse | `anse` | selected_services |
-| Dozzle | `dozzle` | selected_services |
-| Dashy | `dashy` | selected_services |
 | Beszel | `beszel` | selected_services |
 | Autoheal | `autoheal` | selected_services |
 | Watchtower | `watchtower` | selected_services |
