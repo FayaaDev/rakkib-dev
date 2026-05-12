@@ -854,6 +854,11 @@ def add(ctx: click.Context, service: str | None, service_option: str | None, yes
     repo_dir = ctx.obj["repo_dir"]
     state_path = default_state_path(repo_dir)
     state = State.load(state_path)
+    if not state.is_confirmed() and state.get("exposure_mode") is None and not state.get("cloudflare"):
+        state.set("exposure_mode", "internal")
+    services_step._ensure_service_runtime_env(state)
+    if not ensure_prereqs(state, console=console, cloudflared_bin=_cloudflared_bin()):
+        ctx.exit(1)
 
     registry = services_step._load_registry()
     old_selected = set(state.get("foundation_services", []) or [])

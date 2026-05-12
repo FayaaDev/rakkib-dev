@@ -25,6 +25,7 @@ from rakkib.docker import (
     compose_up,
     container_publishes_port,
     container_running,
+    create_network,
     docker_run,
     health_check,
 )
@@ -653,6 +654,7 @@ def _deploy_single_service(state: State, svc: dict, repo: Path, data_root: Path)
     _render_extra_templates(state, svc, repo, data_root)
 
     # --- Start service ---------------------------------------------------
+    create_network(str(state.get("docker_net", "caddy_net")))
     try:
         compose_up(svc_dir, log_path=log_path)
     except DockerError as exc:
