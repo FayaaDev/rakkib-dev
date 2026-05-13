@@ -187,6 +187,30 @@ def test_rendered_beszel_env_uses_internal_url_without_domain(tmp_path):
     assert "APP_URL=http://192.0.2.10:13031" in rendered
 
 
+def test_rendered_gitea_env_uses_internal_url_without_public_domain(tmp_path):
+    src = REPO_ROOT / "src" / "rakkib" / "data" / "templates" / "docker" / "gitea" / ".env.example"
+    dst = tmp_path / "gitea.env"
+
+    state = State({"exposure_mode": "internal", "lan_ip": "192.0.2.10", "GITEA_DB_PASS": "gitea-pass"})
+    render_file(src, dst, state)
+
+    rendered = dst.read_text()
+    assert "GITEA__server__DOMAIN=192.0.2.10" in rendered
+    assert "GITEA__server__ROOT_URL=http://192.0.2.10:13040/" in rendered
+
+
+def test_rendered_forgejo_env_uses_internal_url_without_public_domain(tmp_path):
+    src = REPO_ROOT / "src" / "rakkib" / "data" / "templates" / "docker" / "forgejo" / ".env.example"
+    dst = tmp_path / "forgejo.env"
+
+    state = State({"exposure_mode": "internal", "lan_ip": "192.0.2.10", "FORGEJO_DB_PASS": "forgejo-pass"})
+    render_file(src, dst, state)
+
+    rendered = dst.read_text()
+    assert "FORGEJO__server__DOMAIN=192.0.2.10" in rendered
+    assert "FORGEJO__server__ROOT_URL=http://192.0.2.10:13020/" in rendered
+
+
 def test_flatten_state_deeply_nested():
     state = State({"a": {"b": {"c": "deep"}}})
     flat = flatten_state(state)
