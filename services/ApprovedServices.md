@@ -37,10 +37,12 @@ Status meanings:
 | DailyTxT | `dailytxt` |
 | Wallos | `wallos` |
 | n8n | `n8n` |
+| FreshRSS | `freshrss` |
 Validation notes:
 - OpenBooks: `rakkib add openbooks --yes`, `rakkib smoke openbooks`, `rakkib remove openbooks --yes`, and re-add passed on the test server using `https://openbooks.vazhs.com/`.
 - DailyTxT: `rakkib add dailytxt --yes`, `rakkib smoke dailytxt`, `rakkib remove dailytxt --yes`, and re-add passed on the test server using `https://dailytxt.vazhs.com/`.
 - n8n: installer-first `rakkib add n8n --yes`, internal LAN smoke, `rakkib remove n8n --yes` cleanup, re-add, and final smoke passed on the test server using `http://174.138.183.153:13004/`.
+- FreshRSS: installer-first `rakkib add freshrss --yes`, internal LAN smoke, `rakkib remove freshrss --yes` cleanup, re-add, and final smoke passed on the test server using `http://174.138.183.153:13032/`.
 
 ## Implemented, Pending Testing
 
@@ -66,7 +68,6 @@ Validation notes:
 | Beszel | `beszel` | selected_services |
 | Autoheal | `autoheal` | selected_services |
 | Watchtower | `watchtower` | selected_services |
-| FreshRSS | `freshrss` | selected_services |
 | Actual Budget | `actual-budget` | selected_services |
 | RSSHub | `rsshub` | selected_services |
 | Vaultwarden | `vaultwarden` | selected_services |
