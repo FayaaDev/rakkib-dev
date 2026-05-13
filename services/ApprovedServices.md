@@ -36,9 +36,11 @@ Status meanings:
 | OpenBooks | `openbooks` |
 | DailyTxT | `dailytxt` |
 | Wallos | `wallos` |
+| n8n | `n8n` |
 Validation notes:
 - OpenBooks: `rakkib add openbooks --yes`, `rakkib smoke openbooks`, `rakkib remove openbooks --yes`, and re-add passed on the test server using `https://openbooks.vazhs.com/`.
 - DailyTxT: `rakkib add dailytxt --yes`, `rakkib smoke dailytxt`, `rakkib remove dailytxt --yes`, and re-add passed on the test server using `https://dailytxt.vazhs.com/`.
+- n8n: installer-first `rakkib add n8n --yes`, internal LAN smoke, `rakkib remove n8n --yes` cleanup, re-add, and final smoke passed on the test server using `http://174.138.183.153:13004/`.
 
 ## Implemented, Pending Testing
 
@@ -47,7 +49,6 @@ Validation notes:
 | Caddy | `caddy` | always |
 | Cloudflared | `cloudflared` | always |
 | PostgreSQL | `postgres` | always |
-| n8n | `n8n` | selected_services |
 | Immich | `immich` | selected_services |
 | Jellyfin | `jellyfin` | selected_services |
 | Hermes Agent | `hermes-agent` | selected_services |
