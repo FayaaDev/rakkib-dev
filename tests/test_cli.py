@@ -465,6 +465,26 @@ class TestDoctor:
 
 
 class TestPull:
+    def test_pull_service_allows_unconfirmed_internal_state(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+        state_file = repo_dir / ".fss-state.yaml"
+        state_file.write_text("")
+
+        with (
+            patch("rakkib.cli.ensure_prereqs", return_value=True),
+            patch("rakkib.steps.services._ensure_service_runtime_env") as mock_runtime_env,
+            patch("rakkib.cli._run_service_pull", return_value=True) as mock_run_service_pull,
+        ):
+            result = runner.invoke(cli, ["pull", "--service", "stirling-pdf"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 0
+        mock_runtime_env.assert_called_once()
+        mock_run_service_pull.assert_called_once()
+        state = mock_run_service_pull.call_args.args[0]
+        assert state.get("exposure_mode") == "internal"
+
     def test_pull_only_prints_links_for_installed_services(self, tmp_path: Path):
         runner = CliRunner()
         repo_dir = tmp_path / "repo"
@@ -1213,7 +1233,7 @@ class TestPullSnapshots:
         )
 
         with (
-            patch("rakkib.cli._ensure_prereqs", return_value=True),
+            patch("rakkib.cli.ensure_prereqs", return_value=True),
             patch("rakkib.cli._run_steps", return_value=True),
         ):
             result = runner.invoke(cli, ["pull"], obj={"repo_dir": repo_dir})
