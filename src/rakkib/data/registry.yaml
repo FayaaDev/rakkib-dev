@@ -1187,6 +1187,10 @@ services:
     subdomain_placeholder: OPENCLAW_SUBDOMAIN
     env_keys: []
     depends_on: []
+    internal_access:
+      enabled: true
+      host_port: 18789
+      container_port: 18789
     caddy:
       template: openclaw-public.caddy.tmpl
     homepage:
