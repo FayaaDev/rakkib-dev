@@ -158,6 +158,24 @@ def test_rendered_n8n_route_keeps_proxy_headers(tmp_path):
     assert "header_up X-Real-IP {http.request.header.CF-Connecting-IP}" in rendered
 
 
+def test_rendered_vaultwarden_env_uses_internal_url_without_domain(tmp_path):
+    src = REPO_ROOT / "src" / "rakkib" / "data" / "templates" / "docker" / "vaultwarden" / ".env.example"
+    dst = tmp_path / "vaultwarden.env"
+
+    state = State(
+        {
+            "exposure_mode": "internal",
+            "lan_ip": "192.0.2.10",
+            "VAULTWARDEN_ADMIN_TOKEN": "vaultwarden-admin-token",
+        }
+    )
+    render_file(src, dst, state)
+
+    rendered = dst.read_text()
+    assert "DOMAIN=http://192.0.2.10:13035" in rendered
+    assert "ADMIN_TOKEN=vaultwarden-admin-token" in rendered
+
+
 def test_flatten_state_deeply_nested():
     state = State({"a": {"b": {"c": "deep"}}})
     flat = flatten_state(state)
