@@ -47,6 +47,22 @@ Status meanings:
 | Beszel | `beszel` |
 | Watchtower | `watchtower` |
 | Actual Budget | `actual-budget` |
+| PostgreSQL | `postgres` |
+| Open WebUI | `open-webui` |
+| Forgejo | `forgejo` |
+| OpenClaw | `openclaw` |
+| Claude | `claude` |
+| Codex | `codex` |
+| Cheshire Cat AI | `cheshire-cat-ai` |
+| Flowise | `flowise` |
+| Serge | `serge` |
+| Anse | `anse` |
+| Autoheal | `autoheal` |
+| RSSHub | `rsshub` |
+| AdGuard Home | `adguard` |
+| Stirling-PDF | `stirling-pdf` |
+| Mealie | `mealie` |
+| Gitea | `gitea` |
 Validation notes:
 - OpenBooks: `rakkib add openbooks --yes`, `rakkib smoke openbooks`, `rakkib remove openbooks --yes`, and re-add passed on the test server using `https://openbooks.vazhs.com/`.
 - DailyTxT: `rakkib add dailytxt --yes`, `rakkib smoke dailytxt`, `rakkib remove dailytxt --yes`, and re-add passed on the test server using `https://dailytxt.vazhs.com/`.
@@ -61,6 +77,22 @@ Validation notes:
 - Beszel: installer-first `rakkib add beszel --yes`, internal LAN smoke, `rakkib remove beszel --yes` cleanup, re-add, and final smoke passed on the test server using `http://174.138.183.153:13031/` after fixing internal `APP_URL` rendering.
 - Watchtower: installer-first `rakkib add watchtower --yes`, healthy container/log checks, `rakkib remove watchtower --yes` cleanup, and re-add passed on the test server; logs confirmed label-scoped operation without touching unrelated containers.
 - Actual Budget: installer-first `rakkib add actual-budget --yes`, internal LAN smoke, `rakkib remove actual-budget --yes` cleanup, re-add, and final smoke passed on the test server using `http://174.138.183.153:13033/`.
+- PostgreSQL: installer-first `rakkib add postgres --yes` refresh, `pg_isready`, `select 1`, and a second idempotent `rakkib add postgres --yes` all passed on the test server; `postgres` stayed healthy on `127.0.0.1:5432`.
+- Open WebUI: installer-first `rakkib add open-webui --yes`, internal LAN smoke, `rakkib remove open-webui --yes` cleanup, re-add, and final smoke passed on the test server using `http://174.138.183.153:13019/` after extending startup tolerance for transient unhealthy states.
+- Forgejo: installer-first `rakkib add forgejo --yes`, internal LAN smoke, `rakkib remove forgejo --yes` cleanup, re-add, and final smoke passed on the test server using `http://174.138.183.153:13020/` after fixing internal server URL rendering.
+- OpenClaw: installer-first `rakkib add openclaw --yes`, host gateway health checks, internal LAN smoke on `http://174.138.183.153:18789/healthz`, `rakkib remove openclaw --yes` cleanup, re-add, and final smoke passed after adding internal access metadata.
+- Claude: installer-first `rakkib add claude --yes`, CLI reachability via `/root/.local/bin/claude --version`, `rakkib remove claude --yes` cleanup, re-add, and final cleanup passed after fixing uninstall artifact removal.
+- Codex: installer-first `rakkib add codex --yes`, CLI reachability via `bash -lc 'command -v codex && codex --version'`, `rakkib remove codex --yes` cleanup, re-add, and final cleanup passed after fixing uninstall artifact removal.
+- Cheshire Cat AI: installer-first `rakkib add cheshire-cat-ai --yes`, internal LAN smoke on `/admin`, `rakkib remove cheshire-cat-ai --yes` cleanup, re-add, and final smoke passed after fixing internal host/origin config and smoke expectation.
+- Flowise: installer-first `rakkib add flowise --yes`, internal LAN smoke, `rakkib remove flowise --yes` cleanup, re-add, and final smoke passed on the test server using `http://174.138.183.153:13024/`; immediate smoke needed a short retry while the service finished startup.
+- Serge: installer-first `rakkib add serge --yes`, internal LAN smoke, `rakkib remove serge --yes` cleanup, re-add, and final smoke passed on the test server using `http://174.138.183.153:13025/`.
+- Anse: installer-first `rakkib add anse --yes`, internal LAN smoke, `rakkib remove anse --yes` cleanup, re-add, and final smoke passed on the test server using `http://174.138.183.153:13026/`.
+- Autoheal: installer-first `rakkib add autoheal --yes`, healthy container/log checks, disposable unhealthy-container restart verification, `rakkib remove autoheal --yes` cleanup, re-add, and final cleanup passed; autoheal only restarted the labeled probe container.
+- RSSHub: installer-first `rakkib add rsshub --yes`, healthz smoke, `rakkib remove rsshub --yes` cleanup, re-add, and final smoke passed on the test server using `http://174.138.183.153:13034/healthz` with `rsshub`, `rsshub-redis`, and `rsshub-browserless` all healthy.
+- AdGuard Home: installer-first `rakkib add adguard --yes`, internal LAN smoke, `rakkib remove adguard --yes` cleanup, re-add, and final smoke passed on the test server using `http://174.138.183.153:13036/`.
+- Stirling-PDF: installer-first `rakkib add stirling-pdf --yes`, internal LAN smoke, `rakkib remove stirling-pdf --yes` cleanup, re-add, and final smoke passed on the test server using `http://174.138.183.153:13038/`.
+- Mealie: installer-first `rakkib add mealie --yes`, internal LAN smoke, `rakkib remove mealie --yes` cleanup, re-add, and final smoke passed on the test server using `http://174.138.183.153:13039/`.
+- Gitea: installer-first `rakkib add gitea --yes`, internal LAN smoke, `rakkib remove gitea --yes` cleanup including Postgres DB/role removal, re-add, and final smoke passed on the test server using `http://174.138.183.153:13040/` after fixing internal server URL rendering.
 
 ## Implemented, Pending Testing
 
@@ -68,19 +100,3 @@ Validation notes:
 | --- | --- | --- |
 | Caddy | `caddy` | always |
 | Cloudflared | `cloudflared` | always |
-| PostgreSQL | `postgres` | always |
-| Open WebUI | `open-webui` | selected_services |
-| Forgejo | `forgejo` | selected_services |
-| OpenClaw | `openclaw` | selected_services |
-| Claude | `claude` | selected_services |
-| Codex | `codex` | selected_services |
-| Cheshire Cat AI | `cheshire-cat-ai` | selected_services |
-| Flowise | `flowise` | selected_services |
-| Serge | `serge` | selected_services |
-| Anse | `anse` | selected_services |
-| Autoheal | `autoheal` | selected_services |
-| RSSHub | `rsshub` | selected_services |
-| AdGuard Home | `adguard` | selected_services |
-| Stirling-PDF | `stirling-pdf` | selected_services |
-| Mealie | `mealie` | selected_services |
-| Gitea | `gitea` | selected_services |
