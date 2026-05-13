@@ -12,6 +12,7 @@ import pwd
 import socket
 import shutil
 import subprocess
+import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Callable
@@ -785,16 +786,24 @@ def smoke_check(state: State, svc_id: str) -> VerificationResult:
     if not url:
         return VerificationResult.failure("services", f"No user-facing URL recorded for {svc_id}")
 
-    timeout = str(smoke.get("timeout", 20))
-    result = subprocess.run(
-        ["curl", "-fsSL", "--max-time", timeout, url],
-        capture_output=True,
-        text=True,
-        timeout=int(timeout) + 5,
-    )
-    if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip() or "curl failed"
-        return VerificationResult.failure("services", f"Smoke check failed for {svc_id} at {url}: {detail}")
+    timeout = int(smoke.get("timeout", 20))
+    deadline = time.monotonic() + timeout
+    result: subprocess.CompletedProcess[str] | None = None
+    while True:
+        remaining = max(1, int(deadline - time.monotonic()))
+        attempt_timeout = str(min(10, remaining))
+        result = subprocess.run(
+            ["curl", "-fsSL", "--max-time", attempt_timeout, url],
+            capture_output=True,
+            text=True,
+            timeout=int(attempt_timeout) + 5,
+        )
+        if result.returncode == 0:
+            break
+        if time.monotonic() >= deadline:
+            detail = result.stderr.strip() or result.stdout.strip() or "curl failed"
+            return VerificationResult.failure("services", f"Smoke check failed for {svc_id} at {url}: {detail}")
+        time.sleep(2)
 
     expected = smoke.get("expected_text")
     if expected and expected not in result.stdout:
