@@ -871,9 +871,7 @@ services:
     default_subdomain: hermes
     subdomain_key: hermes-agent
     subdomain_placeholder: HERMES_AGENT_SUBDOMAIN
-    env_keys:
-      - ADMIN_UID
-      - ADMIN_GID
+    env_keys: []
     depends_on: []
     host_service: false
     host_port: false
