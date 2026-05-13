@@ -617,7 +617,13 @@ def pull(ctx: click.Context, service: str | None) -> None:
     state_path = default_state_path(repo_dir)
     state = State.load(state_path)
 
-    if not state.is_confirmed():
+    if service and not state.is_confirmed() and state.get("exposure_mode") is None and not state.get("cloudflare"):
+        state.set("exposure_mode", "internal")
+
+    if service:
+        services_step._ensure_service_runtime_env(state)
+
+    if not service and not state.is_confirmed():
         console.print(
             "[bold red]State is not confirmed.[/bold red] "
             "Run [bold]rakkib init[/bold] first."
