@@ -879,6 +879,7 @@ services:
       enabled: true
       host_port: 13016
       container_port: 9119
+      compose_service: hermes-agent-dashboard
     caddy:
       template: hermes-agent-public.caddy.tmpl
     data_dirs:

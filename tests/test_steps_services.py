@@ -200,6 +200,31 @@ class TestInternalAccessRendering:
         rendered = yaml.safe_load(compose_path.read_text())
         assert rendered["services"]["nocodb"]["ports"] == ["0.0.0.0:13001:8080"]
 
+    def test_internal_mode_uses_declared_compose_service_for_multi_container_app(self, tmp_path: Path):
+        compose_path = tmp_path / "docker-compose.yml"
+        compose_path.write_text(
+            "services:\n"
+            "  hermes-agent:\n"
+            "    image: nousresearch/hermes-agent:latest\n"
+            "  hermes-agent-dashboard:\n"
+            "    image: nousresearch/hermes-agent:latest\n"
+        )
+        svc = {
+            "id": "hermes-agent",
+            "internal_access": {
+                "enabled": True,
+                "host_port": 13016,
+                "container_port": 9119,
+                "compose_service": "hermes-agent-dashboard",
+            },
+        }
+
+        services_step._apply_internal_access_ports(State({"exposure_mode": "internal"}), svc, compose_path)
+
+        rendered = yaml.safe_load(compose_path.read_text())
+        assert "ports" not in rendered["services"]["hermes-agent"]
+        assert rendered["services"]["hermes-agent-dashboard"]["ports"] == ["0.0.0.0:13016:9119"]
+
     def test_cloudflare_mode_does_not_inject_internal_direct_port(self, tmp_path: Path):
         original = "services:\n  nocodb:\n    image: nocodb/nocodb:latest\n"
         compose_path = tmp_path / "docker-compose.yml"
