@@ -28,6 +28,8 @@ All newly added services MUST be deployed and verified here:
 
 `sshpass -p 'z45rdKUe' ssh -o StrictHostKeyChecking=accept-new root@174.138.183.153`
 
+`192.168.0.235` (Fayaalink) is not a validation target. Never test, deploy, or run the service-validation workflow on that host.
+
 Use the dedicated project subagents for this validation work:
 - `RakkibTester1`, `RakkibTester2`, and `RakkibTester3` run test-server validation.
 - Assign one service/bead to one tester at a time. The test server is resource-limited; do not run concurrent validations.
@@ -45,11 +47,13 @@ Do not run `rakkib init` or full `rakkib pull` for normal new-service validation
 3. `rakkib smoke <service>` for browser-facing services
 4. `rakkib remove <service> --yes` and confirm cleanup removes rendered artifacts, declared data, and service Postgres resources when declared
 5. Re-add with `rakkib add <service> --yes` to prove removal did not leave stale state
-6. Move to the next service only after the public or internal HTML smoke check passes
+6. Re-run `rakkib remove <service> --yes` after successful validation so the tested service is not left running on the test server
+7. Move to the next service only after the public or internal HTML smoke check passes and the validated service has been removed
 
 Do not treat local runs as proof.
 
 After test-server validation passes, update `ApprovedServices.md` in the same work item. Services must not be marked approved before add, smoke, remove, re-add, and any applicable internal-mode checks pass.
+Services must not remain deployed on the test server after a successful validation unless the user explicitly requests that they stay up.
 
 ## Required Implementation Shape
 

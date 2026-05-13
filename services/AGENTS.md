@@ -39,6 +39,7 @@ Use the dedicated project subagents for test-server validation:
 - Assign exactly one service/bead to one tester agent at a time; do not run multiple validations concurrently on the resource-limited test server.
 - Tester agents validate only. They must not edit source files, update approval docs, close beads, commit, or push. The primary agent reviews their evidence, then performs any required repository updates and bead closure.
 - If a tester reports high load, memory pressure, swap exhaustion, another active validation, or a failing command, stop and document the blocker instead of marking the service complete.
+- After a service passes validation, remove it immediately from the test server with `rakkib remove <service> --yes`. Do not leave successfully tested services running unless the user explicitly asks.
 
 Before implementing a service, check `PendingServices.md` and `ApprovedServices.md`:
 - if the service is in `PendingServices.md`, implement and test it, then remove it from `PendingServices.md` after successful validation
@@ -48,6 +49,8 @@ Before implementing a service, check `PendingServices.md` and `ApprovedServices.
 Run deployments on the test server (not this machine):
 
 sshpass -p 'z45rdKUe' ssh -o StrictHostKeyChecking=accept-new root@174.138.183.153 'set -euo pipefail; /root/.local/bin/rakkib --help | sed -n "1,220p"'
+
+- The Fayaalink host at `192.168.0.235` is never a validation target. Do not test, deploy, or run service-validation workflows on `192.168.0.235`.
 
 When delegating validation, feed the selected `RakkibTester` subagent the target bead/service, the command above, and the validation checklist below. Do not ask a beads-task-agent to run service validation.
 
@@ -63,6 +66,7 @@ Do not run `rakkib init` or full `rakkib pull` for normal new-service validation
 - reserve full `rakkib pull` only for explicit whole-server validation; it skips already-running selected services but still runs global setup
 - validate `rakkib remove <service> --yes` cleanup and re-add the service after removal when adding or changing service definitions
 - for services that support `exposure_mode: internal`, confirm Caddy/Cloudflare are skipped, the direct LAN port is published, and smoke uses the LAN URL
+- after successful validation and evidence capture, run `rakkib remove <service> --yes` again so the service does not remain on the test server
 - after successful validation, mark the service in `ApprovedServices.md` as `Implemented and tested` with concise validation notes
 - if validation succeeds, close the related `bd` issue and report exactly that the service is implemented successfully and tested
 - if validation fails, leave the related `bd` issue open, document the issue and failing command/output, and report the blocking issue instead of claiming success

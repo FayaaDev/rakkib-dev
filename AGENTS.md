@@ -30,6 +30,7 @@ Assume the target machine is **bare metal** — only `curl`, `git`, and `python3
 sshpass -p 'z45rdKUe' ssh -o StrictHostKeyChecking=accept-new root@174.138.183.153 'set -euo pipefail; /root/.local/bin/rakkib --help | sed -n "1,220p"'
 
 - Bare-metal install and runtime validation happen on the test server, not the dev workstation. Do not treat local tests as a substitute for fresh-server validation.
+- `192.168.0.235` (Fayaalink) is the dev workstation, not the validation target. Never run service-validation or test-server deployment workflows on `192.168.0.235`.
 - Local developer regression baseline after Python changes: run `python3 -m py_compile <changed-python-files>` and the relevant pytest target through the project venv, usually `.venv/bin/python -m pytest <target>`.
 - Install local test tooling with `python3 -m venv .venv && .venv/bin/python -m pip install -e '.[test]'` when `.venv` or pytest is missing. Keep this dev-only; do not assume pytest exists on bare-metal target hosts.
 
@@ -62,6 +63,7 @@ curl -fsSL https://raw.githubusercontent.com/FayaaDev/Rakkib/main/install.sh | b
 - **Do not add new hardcoded `if svc_id == ...` branches** in Python unless the behavior genuinely cannot be expressed through registry fields, templates, or hooks.
 - **`rakkib add` is part of the contract.** It now opens a registry-driven checkbox TUI that lists all services from `src/rakkib/data/registry.yaml`, marks already-installed services with `[X]`, and syncs the server to match the final selection.
 - **Use non-interactive service validation for waves.** Prefer `rakkib pull --service <id>`, `rakkib add <id> --yes`, and `rakkib smoke <id>` when validating one service at a time on the test server.
+- **Remove validated services immediately.** After a service passes validation and evidence is captured, run `rakkib remove <id> --yes` so the test server does not accumulate validated services.
 - **Full `rakkib pull` is whole-server validation.** It skips selected services that are already installed and running, but it still runs global setup; do not use it as the default loop for a single service on a reused test server.
 - **Unchecked services are fully removed.** The `rakkib add` sync flow is destructive for deselected services: it tears down containers, removes rendered config, removes service data directories, deletes related generated artifacts, and drops service-specific Postgres databases/roles when declared in the registry.
 - **New services must work with both `pull` and `rakkib add`.** A service is not complete unless it can be selected in the `rakkib add` TUI, deployed through that flow, and cleanly removed again through deselection.
