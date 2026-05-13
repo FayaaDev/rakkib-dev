@@ -1029,6 +1029,7 @@ services:
       interval: 60
       timeout: 10
       retries: 3
+    health_timeout: 300
     smoke:
       path: /
       expected_text: Open WebUI
