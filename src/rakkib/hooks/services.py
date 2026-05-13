@@ -130,6 +130,12 @@ def claude_uninstall(ctx: HookContext, *legacy_args) -> None:
     # Installer sets up a `claude` launcher. If it exists, try the built-in uninstall.
     _run_as_service_user(ctx.state, ["bash", "-lc", "command -v claude"], check=False)
     _run_as_service_user(ctx.state, ["bash", "-lc", "claude uninstall"], check=False, timeout=300)
+    _run_as_service_user(
+        ctx.state,
+        ["bash", "-lc", "rm -f ~/.local/bin/claude && rm -rf ~/.local/share/claude ~/.claude"],
+        check=False,
+        timeout=120,
+    )
 
 
 def codex_install(ctx: HookContext, *legacy_args) -> None:
@@ -148,6 +154,12 @@ def codex_uninstall(ctx: HookContext, *legacy_args) -> None:
     if not shutil.which("npm"):
         return
     _run_as_service_user(ctx.state, ["bash", "-lc", "npm uninstall -g @openai/codex"], check=False, timeout=600)
+    _run_as_service_user(
+        ctx.state,
+        ["bash", "-lc", "rm -f ~/.local/bin/codex && rm -rf ~/.local/lib/node_modules/@openai/codex"],
+        check=False,
+        timeout=120,
+    )
 
 
 def _write_text_if_changed(path: Path, content: str) -> bool:
