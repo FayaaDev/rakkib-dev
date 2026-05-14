@@ -581,7 +581,7 @@ class TestAdd:
         assert "━━ AI ━━" in titles
         assert "━━ Other ━━" in titles
         assert titles.index("━━ Automation ━━") < titles.index(
-            "  n8n - Workflow automation"
+            "  n8n [Workflow automation]"
         )
 
     def test_add_rejects_invalid_dependency_selection(self, tmp_path: Path):

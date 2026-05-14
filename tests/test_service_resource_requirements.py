@@ -12,7 +12,7 @@ from rakkib.state import State
 from rakkib.steps import services as services_step
 
 
-def test_build_add_choices_includes_resource_warning_suffix():
+def test_build_add_choices_include_description_and_resource_suffixes():
     state = State({"foundation_services": [], "selected_services": []})
     registry = {
         "services": [
@@ -32,10 +32,13 @@ def test_build_add_choices_includes_resource_warning_suffix():
     choices = build_add_choices(state, registry)
     titles = [choice.title for choice in choices]
 
-    assert any("hermes-agent - Self-improving AI agent [heavy: 8 GB RAM, 25 GB disk recommended]" in title for title in titles)
+    assert any(
+        "hermes-agent [Self-improving AI agent] [heavy: 8 GB RAM, 25 GB disk recommended]" in title
+        for title in titles
+    )
 
 
-def test_interview_service_catalog_includes_resource_warning_suffix():
+def test_interview_service_catalog_includes_description_and_resource_suffixes():
     schema = SimpleNamespace(
         service_catalog={
             "foundation_bundle": [],
@@ -48,7 +51,7 @@ def test_interview_service_catalog_includes_resource_warning_suffix():
         "services": [
             {
                 "id": "hermes-agent",
-                "homepage": {"category": "AI"},
+                "homepage": {"category": "AI", "description": "Self-improving AI agent"},
                 "resource_requirements": {
                     "recommended_ram_mb": 8192,
                     "recommended_disk_gb": 25,
@@ -64,7 +67,10 @@ def test_interview_service_catalog_includes_resource_warning_suffix():
         _handle_service_catalog(schema, state)
 
     titles = [choice.title for choice in mock_checkbox.call_args.kwargs["choices"]]
-    assert any("Hermes Agent [heavy: 8 GB RAM, 25 GB disk recommended]" in title for title in titles)
+    assert any(
+        "Hermes Agent [Self-improving AI agent] [heavy: 8 GB RAM, 25 GB disk recommended]" in title
+        for title in titles
+    )
 
 
 def test_service_resource_preflight_fails_below_min_disk_with_clear_message(monkeypatch, tmp_path: Path):
