@@ -74,28 +74,37 @@ def test_cookie_authenticated_patch_accepts_csrf_token(tmp_path):
         json={"state": {"domain": "example.com"}},
     )
 
-    assert response.status_code == 200
-    assert response.json()["state"]["domain"] == "example.com"
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Use the phase answers API for setup updates; arbitrary state patches are not allowed."
 
 
-def test_web_state_patch_writes_checkout_root_state_from_package_dir(tmp_path):
+def test_web_state_patch_rejects_arbitrary_updates_without_writing_state(tmp_path):
     checkout = tmp_path / "Rakkib"
     package_dir = checkout / "src" / "rakkib"
     package_dir.mkdir(parents=True)
     (checkout / ".git").mkdir()
     client = _client(package_dir)
     bootstrap = client.post("/api/session/bootstrap", json={"token": "setup-token"})
+    state_path = checkout / ".fss-state.yaml"
+    State({"domain": "kept.example.com"}).save(state_path)
 
-    response = client.patch(
-        "/api/state",
-        headers={"X-CSRF-Token": bootstrap.json()["csrf_token"]},
-        json={"state": {"domain": "example.com"}},
-    )
+    for patch in (
+        {"confirmed": True},
+        {"secrets": {"values": {"token": "secret"}}},
+        {"web_deployment": {"status": "succeeded"}},
+    ):
+        response = client.patch(
+            "/api/state",
+            headers={"X-CSRF-Token": bootstrap.json()["csrf_token"]},
+            json={"state": patch},
+        )
 
-    assert response.status_code == 200
-    assert (checkout / ".fss-state.yaml").exists()
+        assert response.status_code == 422
+        assert response.json()["detail"] == "Use the phase answers API for setup updates; arbitrary state patches are not allowed."
+
+    assert state_path.exists()
     assert not (package_dir / ".fss-state.yaml").exists()
-    assert State.load(checkout / ".fss-state.yaml").get("domain") == "example.com"
+    assert State.load(state_path).get("domain") == "kept.example.com"
 
 
 def test_logout_revokes_session_and_clears_cookie(tmp_path):

@@ -343,10 +343,13 @@ def build_api_router(auth: AuthManager, config: WebRuntimeConfig, run_manager: W
         auth.require_csrf(request)
         response.headers["Cache-Control"] = "no-store"
 
-        state = _load_state(state_path)
-        state.merge(payload.state)
-        state.save(state_path)
+        if payload.state:
+            raise HTTPException(
+                status_code=422,
+                detail="Use the phase answers API for setup updates; arbitrary state patches are not allowed.",
+            )
 
+        state = _load_state(state_path)
         return {
             "state": _redact_state_payload(state),
             "confirmed": state.is_confirmed(),
