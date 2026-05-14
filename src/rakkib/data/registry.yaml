@@ -862,49 +862,6 @@ services:
       remove:
         - cloudflare_dns_delete
 
-  - id: hermes-agent
-    state_bucket: selected_services
-    required: false
-    optional: true
-    image: nousresearch/hermes-agent:latest
-    default_port: 9119
-    default_subdomain: hermes
-    subdomain_key: hermes-agent
-    subdomain_placeholder: HERMES_AGENT_SUBDOMAIN
-    env_keys: []
-    depends_on: []
-    host_service: false
-    host_port: false
-    internal_access:
-      enabled: true
-      host_port: 13016
-      container_port: 9119
-      compose_service: hermes-agent-dashboard
-    caddy:
-      template: hermes-agent-public.caddy.tmpl
-    data_dirs:
-      - data/hermes-agent
-    homepage:
-      category: Developer Tools
-      name: Hermes Agent
-      description: Self-improving AI agent (NousResearch)
-      icon: hermes.png
-    monitoring:
-      enabled: true
-      type: http
-      target: public_url
-      path: /
-      interval: 60
-      timeout: 10
-      retries: 3
-    smoke:
-      path: /
-      expected_text: Hermes
-    notes: "Hermes Agent dashboard and gateway. WARNING: dashboard may expose secrets; do not expose publicly without authentication."
-    hooks:
-      remove:
-        - cloudflare_dns_delete
-
   - id: chatpad
     state_bucket: selected_services
     required: false
@@ -1220,6 +1177,49 @@ services:
         - openclaw_gateway_uninstall
         - cloudflare_dns_delete
     notes: "Personal AI assistant gateway. Runs as a systemd user service on the host (not in Docker). Proxy via Caddy to host port 18789."
+
+  - id: hermes-agent
+    state_bucket: selected_services
+    required: false
+    optional: true
+    image: nousresearch/hermes-agent:latest
+    default_port: 9119
+    default_subdomain: hermes
+    subdomain_key: hermes-agent
+    subdomain_placeholder: HERMES_AGENT_SUBDOMAIN
+    env_keys: []
+    depends_on: []
+    host_service: false
+    host_port: false
+    internal_access:
+      enabled: true
+      host_port: 13016
+      container_port: 9119
+      compose_service: hermes-agent-dashboard
+    caddy:
+      template: hermes-agent-public.caddy.tmpl
+    data_dirs:
+      - data/hermes-agent
+    homepage:
+      category: AI
+      name: Hermes Agent
+      description: Self-improving AI agent (NousResearch)
+      icon: hermes.png
+    monitoring:
+      enabled: true
+      type: http
+      target: public_url
+      path: /
+      interval: 60
+      timeout: 10
+      retries: 3
+    smoke:
+      path: /
+      expected_text: Hermes
+    notes: "Hermes Agent dashboard and gateway. WARNING: dashboard may expose secrets; do not expose publicly without authentication."
+    hooks:
+      remove:
+        - cloudflare_dns_delete
 
   - id: claude
     state_bucket: selected_services
