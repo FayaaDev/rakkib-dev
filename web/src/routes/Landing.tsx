@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { fetchPublicServices, fetchSession, fetchSetupResume, fetchSetupRunStatus } from '../api/client'
 import type { PublicService } from '../api/types'
 import { LanguageToggle } from '../components/LanguageToggle'
-import { ServiceMark } from '../components/ServiceMark'
 import { useI18n } from '../i18n/useI18n'
 import { SetupBridge } from './SetupBridge'
 
@@ -17,8 +16,8 @@ type ServicesState =
   | { status: 'error'; message: string }
   | { status: 'ready'; services: PublicServiceItem[] }
 
-function formatServiceSubdomain(item: PublicServiceItem, subdomainSuffix: string, localOrHostTool: string) {
-  return item.default_subdomain ? `${item.default_subdomain}${subdomainSuffix}` : localOrHostTool
+function formatServiceSubdomain(item: PublicServiceItem, subdomainSuffix: string) {
+  return item.default_subdomain ? `${item.default_subdomain}${subdomainSuffix}` : null
 }
 
 function catalogSearchText(item: PublicServiceItem) {
@@ -36,19 +35,6 @@ function catalogSearchText(item: PublicServiceItem) {
     .filter(Boolean)
     .join(' ')
     .toLowerCase()
-}
-
-function serviceStatusLabel(
-  item: PublicServiceItem,
-  labels: { required: string; foundation: string; optional: string },
-) {
-  if (item.required) {
-    return labels.required
-  }
-  if (item.foundation) {
-    return labels.foundation
-  }
-  return labels.optional
 }
 
 function serviceDetail(
@@ -88,12 +74,6 @@ export function Landing() {
   const [servicesState, setServicesState] = useState<ServicesState>({ status: 'loading' })
 
   const subdomainSuffix = t('subdomainSuffix')
-  const localOrHostTool = t('localOrHostTool')
-  const statusLabels = {
-    required: t('statusRequired'),
-    foundation: t('statusFoundation'),
-    optional: t('statusOptional'),
-  }
   const detailLabels = {
     alwaysInstalled: t('detailAlwaysInstalled'),
     runsOnHost: t('detailRunsOnHost'),
@@ -286,25 +266,29 @@ export function Landing() {
                       </div>
 
                       <div className="setup-service-list" role="list">
-                        {items.map((item) => (
-                          <article
-                            key={item.id}
-                            className="setup-service-item"
-                            role="listitem"
-                            style={{ cursor: 'default' }}
-                          >
-                            <ServiceMark slug={item.id} label={item.name ?? item.id} />
-                            <span className="setup-service-copy">
-                              <strong>{item.name ?? item.id}</strong>
-                              <span>{serviceDetail(item, ts, detailLabels)}</span>
-                            </span>
-                            <span className="setup-service-tags">
-                              <span className="setup-service-tag">{formatServiceSubdomain(item, subdomainSuffix, localOrHostTool)}</span>
-                              <span className="setup-service-tag">{serviceStatusLabel(item, statusLabels)}</span>
-                              {item.host_service ? <span className="setup-service-tag">{t('tagHost')}</span> : null}
-                            </span>
-                          </article>
-                        ))}
+                        {items.map((item) => {
+                          const serviceSubdomain = formatServiceSubdomain(item, subdomainSuffix)
+
+                          return (
+                            <article
+                              key={item.id}
+                              className="setup-service-item"
+                              role="listitem"
+                              style={{ cursor: 'default' }}
+                            >
+                              {/* <ServiceMark slug={item.id} label={item.name ?? item.id} /> */}
+                              <span className="setup-service-copy">
+                                <strong>{item.name ?? item.id}</strong>
+                                <span>{serviceDetail(item, ts, detailLabels)}</span>
+                              </span>
+                              {serviceSubdomain ? (
+                                <span className="setup-service-tags">
+                                  <span className="setup-service-tag">{serviceSubdomain}</span>
+                                </span>
+                              ) : null}
+                            </article>
+                          )
+                        })}
                       </div>
                     </article>
                   ))

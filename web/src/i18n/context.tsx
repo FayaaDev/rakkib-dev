@@ -12,8 +12,7 @@ function formatTemplate(template: string, vars: Record<string, string | number>)
 function getInitialLocale(): Locale {
   const stored = localStorage.getItem('locale') as Locale | null
   if (stored === 'en' || stored === 'ar') return stored
-  const browserLang = navigator.language.slice(0, 2)
-  return browserLang === 'ar' ? 'ar' : 'en'
+  return 'ar'
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {

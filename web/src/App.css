@@ -1274,6 +1274,36 @@
   justify-content: space-between;
 }
 
+.services .setup-service-item,
+.services .setup-service-copy {
+  justify-items: center;
+  text-align: center;
+}
+
+.services .setup-service-list {
+  grid-auto-rows: 1fr;
+}
+
+.services .setup-service-item {
+  position: relative;
+  place-content: center;
+  padding-top: 44px;
+}
+
+.services .setup-service-tags {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  justify-content: center;
+}
+
+.services .setup-service-tag {
+  min-height: 0;
+  padding: 3px 7px;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
 .setup-service-status,
 .setup-service-tag {
   display: inline-flex;
