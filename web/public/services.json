@@ -118,6 +118,19 @@
       "icon": "openclaw.png"
     },
     {
+      "id": "hermes-agent",
+      "required": false,
+      "optional": true,
+      "foundation": false,
+      "host_service": false,
+      "default_subdomain": "hermes",
+      "default_port": 9119,
+      "category": "AI",
+      "name": "Hermes Agent",
+      "description": "Self-improving AI agent (NousResearch)",
+      "icon": "hermes.png"
+    },
+    {
       "id": "serge",
       "required": false,
       "optional": true,
@@ -272,19 +285,6 @@
       "name": "Forgejo",
       "description": "Self-hosted Git forge",
       "icon": "forgejo.png"
-    },
-    {
-      "id": "hermes-agent",
-      "required": false,
-      "optional": true,
-      "foundation": false,
-      "host_service": false,
-      "default_subdomain": "hermes",
-      "default_port": 9119,
-      "category": "Developer Tools",
-      "name": "Hermes Agent",
-      "description": "Self-improving AI agent (NousResearch)",
-      "icon": "hermes.png"
     },
     {
       "id": "it-tools",

@@ -67,6 +67,11 @@ service_catalog:
       numeric_alias: 10
       subdomain_key: openclaw
       default_subdomain: claw
+    - slug: hermes-agent
+      label: Hermes Agent
+      numeric_alias: 36
+      subdomain_key: hermes-agent
+      default_subdomain: hermes
     - slug: claude
       label: Claude
       numeric_alias: 47
@@ -262,11 +267,6 @@ service_catalog:
       numeric_alias: 34
       subdomain_key: moodist
       default_subdomain: moodist
-    - slug: hermes-agent
-      label: Hermes Agent
-      numeric_alias: 36
-      subdomain_key: hermes-agent
-      default_subdomain: hermes
     - slug: cheshire-cat-ai
       label: Cheshire Cat AI
       numeric_alias: 38
@@ -348,7 +348,7 @@ fields:
     type: multi_select
     selection_mode: add_to_empty
     prompt: "Service categories: type service slugs to add (e.g. `n8n immich filebrowser`); numeric aliases like `6 8 12` are also accepted, or press Enter to skip all:"
-    canonical_values: [n8n, immich, transfer, jellyfin, plex, openclaw, claude, codex, anse, filebrowser, webdav, pingvin-share, it-tools, cyberchef, drawio, excalidraw, homer, dozzle, grafana, homarr, glance, dashy, beszel, glances, freshrss, openbooks, actual-budget, wallos, rsshub, vaultwarden, adguard, gladys-assistant, whoogle, forgejo, privatebin, stirling-pdf, mealie, dailytxt, notemark, memos, esphome, gitea, whoami, pairdrop, moodist, hermes-agent, cheshire-cat-ai, flowise, serge, chatpad, lobe-chat, open-webui, ollama-cpu, ollama-amd, ollama-nvidia, autoheal, watchtower, matter-server]
+    canonical_values: [n8n, immich, transfer, jellyfin, plex, openclaw, hermes-agent, claude, codex, anse, filebrowser, webdav, pingvin-share, it-tools, cyberchef, drawio, excalidraw, homer, dozzle, grafana, homarr, glance, dashy, beszel, glances, freshrss, openbooks, actual-budget, wallos, rsshub, vaultwarden, adguard, gladys-assistant, whoogle, forgejo, privatebin, stirling-pdf, mealie, dailytxt, notemark, memos, esphome, gitea, whoami, pairdrop, moodist, cheshire-cat-ai, flowise, serge, chatpad, lobe-chat, open-webui, ollama-cpu, ollama-amd, ollama-nvidia, autoheal, watchtower, matter-server]
     numeric_aliases:
       "6": n8n
       "7": immich

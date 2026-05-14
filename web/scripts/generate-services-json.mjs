@@ -41,6 +41,12 @@ function normalizeService(svc) {
   }
 }
 
+function serviceSortKey(svc) {
+  if (svc.category === 'AI' && svc.id === 'openclaw') return 'OpenClaw\u0000a'
+  if (svc.category === 'AI' && svc.id === 'hermes-agent') return 'OpenClaw\u0000b'
+  return `${svc.name}\u0000${svc.id}`
+}
+
 function parseArgs(argv) {
   return {
     fetchLogos: argv.includes('--fetch-logos'),
@@ -128,8 +134,8 @@ async function main() {
       .map(normalizeService)
       .filter((svc) => svc.id)
       .sort((a, b) => {
-        const keyA = `${a.category}\u0000${a.name}\u0000${a.id}`
-        const keyB = `${b.category}\u0000${b.name}\u0000${b.id}`
+        const keyA = `${a.category}\u0000${serviceSortKey(a)}`
+        const keyB = `${b.category}\u0000${serviceSortKey(b)}`
         return keyA.localeCompare(keyB)
       }),
   }
