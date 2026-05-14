@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import platform
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -26,6 +27,7 @@ from rakkib.doctor import (
     check_public_ports,
     check_ram,
     check_ssh_port,
+    handle_docker_permission_denied,
     process_owners_for_ports,
     run_checks,
     summary_text,
@@ -458,6 +460,47 @@ class TestAttemptFixDocker:
             "-c",
             "curl -fsSL https://get.docker.com | sh",
         ]
+
+
+class TestDockerPermissionRepair:
+    @patch("rakkib.doctor.os.execvp", side_effect=OSError("exec failed"))
+    @patch("rakkib.doctor.prompt_confirm", return_value=True)
+    @patch("rakkib.doctor.shutil.which", return_value="/usr/bin/sg")
+    @patch("rakkib.doctor.prepare_docker_access", return_value="Docker access was prepared for user ubuntu.")
+    def test_offers_current_command_rerun_after_group_repair(
+        self,
+        _repair: MagicMock,
+        _which: MagicMock,
+        mock_prompt: MagicMock,
+        mock_execvp: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+        monkeypatch.setattr(sys, "argv", ["rakkib", "pull", "--service", "memos"])
+
+        assert handle_docker_permission_denied(MagicMock(), "ubuntu") is False
+
+        mock_prompt.assert_called_once_with(
+            "Re-run this Rakkib command in a docker-group subshell now?",
+            default=True,
+        )
+        mock_execvp.assert_called_once_with(
+            "sg",
+            ["sg", "docker", "-c", "rakkib pull --service memos"],
+        )
+
+    @patch("rakkib.doctor.os.execvp")
+    @patch("rakkib.doctor.prompt_confirm")
+    @patch("rakkib.doctor.prepare_docker_access", return_value="Run `rakkib auth` from an interactive terminal.")
+    def test_does_not_offer_rerun_when_group_repair_fails(
+        self,
+        _repair: MagicMock,
+        mock_prompt: MagicMock,
+        mock_execvp: MagicMock,
+    ):
+        assert handle_docker_permission_denied(MagicMock(), "ubuntu") is False
+        mock_prompt.assert_not_called()
+        mock_execvp.assert_not_called()
 
 
 class TestWaitForAptLocks:
