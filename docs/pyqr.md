@@ -44,16 +44,26 @@ def _show_qr(url: str) -> None:
     try:
         import qrcode
         import qrcode.constants
-        qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_L)
+        qr = qrcode.QRCode(
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            border=4,
+        )
         qr.add_data(url)
         qr.make(fit=True)
-        qr.print_ascii(invert=True)   # white-on-black renders on dark terminals
+        matrix = qr.get_matrix()
+        size = 21 + 4 * (qr.version - 1)
+        display_width = (size + 8) * 2
+        display_height = size + 8
+        black = "\033[40m  \033[0m"
+        white = "\033[107m  \033[0m"
+        for y in range(display_height):
+            print("".join(black if matrix[y][x] else white for x in range(display_width // 2)))
     except ImportError:
         pass   # qrcode not installed; URL was already printed, that's enough
 ```
 
-`print_ascii(invert=True)` works on any terminal (no ANSI colour codes needed)
-and fits in ~60 columns for a typical Cloudflare dashboard URL.
+Each module is rendered as two terminal columns so the QR code stays close to
+square on typical terminals and scans more reliably.
 
 ### Changes to `run()` — `browser_login` branch
 
