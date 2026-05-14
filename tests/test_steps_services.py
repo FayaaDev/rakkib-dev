@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
+from rakkib.docker import DockerError
 from rakkib.hooks import services as service_hooks
 from rakkib.state import State
 from rakkib.steps import selected_service_defs
@@ -413,7 +414,7 @@ class TestRun:
 
         composed = {Path(call.args[0]).name for call in mock_compose.call_args_list}
         assert composed == {"dockge", "homepage", "immich", "jellyfin", "n8n", "nocodb", "transfer", "uptime-kuma"}
-        mock_reload.assert_called_once()
+        assert mock_reload.call_count == 9
         assert any(call.args[3]["id"] == "openclaw" for call in mock_hooks.call_args_list)
 
         routes = {path.name for path in (data_root / "docker" / "caddy" / "routes").glob("*.caddy")}
@@ -440,9 +441,10 @@ class TestRun:
 
 class TestRunSingleService:
     @patch("rakkib.steps.services._repo_dir")
+    @patch("rakkib.steps.services.health_check", return_value=True)
     @patch("rakkib.steps.services.compose_up")
     @patch("rakkib.steps.services._reload_caddy")
-    def test_deploys_single_service(self, mock_reload, mock_compose, mock_repo, fake_repo, tmp_path):
+    def test_deploys_single_service(self, mock_reload, mock_compose, _mock_health, mock_repo, fake_repo, tmp_path):
         mock_repo.return_value = fake_repo
         data_root = tmp_path / "srv"
         state = State({
@@ -454,6 +456,92 @@ class TestRunSingleService:
         services_step.run_single_service(state, "nocodb")
         mock_compose.assert_called_once()
         mock_reload.assert_called_once()
+
+    @patch("rakkib.steps.services._repo_dir")
+    @patch("rakkib.steps.services._load_registry")
+    @patch("rakkib.steps.services._run_named_hooks")
+    @patch("rakkib.steps.services.health_check", return_value=True)
+    @patch("rakkib.steps.services.compose_up")
+    @patch("rakkib.steps.services._reload_caddy")
+    def test_run_reloads_caddy_before_later_service_failure(
+        self,
+        mock_reload: MagicMock,
+        mock_compose: MagicMock,
+        _mock_health: MagicMock,
+        _mock_hooks: MagicMock,
+        mock_registry: MagicMock,
+        mock_repo: MagicMock,
+        fake_repo: Path,
+        tmp_path: Path,
+    ):
+        mock_repo.return_value = fake_repo
+        mock_registry.return_value = {
+            "services": [
+                {
+                    "id": "homepage",
+                    "state_bucket": "foundation_services",
+                    "host_service": False,
+                    "default_port": 3000,
+                    "depends_on": [],
+                    "caddy": {"template": "homepage.caddy.tmpl"},
+                },
+                {
+                    "id": "nocodb",
+                    "state_bucket": "foundation_services",
+                    "host_service": False,
+                    "default_port": 8080,
+                    "depends_on": [],
+                    "caddy": {"template": "nocodb.caddy.tmpl"},
+                },
+            ]
+        }
+        mock_compose.side_effect = [
+            None,
+            DockerError("boom", ["docker", "compose"], 1, "boom"),
+        ]
+        data_root = tmp_path / "srv"
+        state = State(
+            {
+                "foundation_services": ["homepage", "nocodb"],
+                "selected_services": [],
+                "data_root": str(data_root),
+                "backup_dir": str(data_root / "backups"),
+                "VALUE": "test123",
+            }
+        )
+
+        with pytest.raises(RuntimeError, match="Service 'nocodb' failed to start"):
+            services_step.run(state)
+
+        assert mock_compose.call_count == 2
+        mock_reload.assert_called_once_with(data_root)
+
+
+class TestReloadCaddy:
+    @patch("rakkib.steps.services.docker_run")
+    def test_reload_caddy_prefers_hot_reload(self, mock_docker_run: MagicMock, tmp_path: Path):
+        data_root = tmp_path / "srv"
+        caddy_dir = data_root / "docker" / "caddy"
+        caddy_dir.mkdir(parents=True)
+        (caddy_dir / "Caddyfile").write_text(":80 {\n\trespond \"ok\" 200\n}\n")
+
+        fmt_result = MagicMock(returncode=0, stdout=":80 {\nrespond \"ok\" 200\n}\n")
+        reload_result = MagicMock(returncode=0, stdout="", stderr="")
+        mock_docker_run.side_effect = [fmt_result, reload_result]
+
+        services_step._reload_caddy(data_root)
+
+        assert mock_docker_run.call_count == 2
+        assert mock_docker_run.call_args_list[0].args[0] == ["compose", "exec", "caddy", "caddy", "fmt", "/etc/caddy/Caddyfile"]
+        assert mock_docker_run.call_args_list[1].args[0] == [
+            "compose",
+            "exec",
+            "caddy",
+            "caddy",
+            "reload",
+            "--config",
+            "/etc/caddy/Caddyfile",
+        ]
 
     @patch("rakkib.steps.services.compose_up")
     @patch("rakkib.steps.services._reload_caddy")
