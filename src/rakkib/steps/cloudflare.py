@@ -73,12 +73,23 @@ def _show_qr(url: str) -> None:
         qr.add_data(url)
         qr.make(fit=True)
         matrix = qr.get_matrix()
+        size = 21 + 4 * (qr.version - 1)
+        display_width = (size + 8) * 2
+        display_height = size + 8
         rows = len(matrix)
         cols = len(matrix[0]) if rows else 0
-        black = "\033[40m \033[0m"
-        white = "\033[107m \033[0m"
-        for y in range(rows):
-            print("".join(black if matrix[y][x] else white for x in range(cols)))
+
+        # Render each module as two terminal columns so the QR code stays
+        # close to square and easier for phone cameras to scan.
+        if rows != display_height or cols * 2 != display_width:
+            display_height = rows
+            display_width = cols * 2
+
+        black = "\033[40m  \033[0m"
+        white = "\033[107m  \033[0m"
+        for y in range(display_height):
+            row = matrix[y]
+            print("".join(black if row[x] else white for x in range(cols)))
     except ImportError:
         pass
 
