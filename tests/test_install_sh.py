@@ -34,6 +34,26 @@ def _run_install_script(script: str, tmp_path: Path) -> subprocess.CompletedProc
     )
 
 
+def test_run_quiet_uses_portable_mktemp_template(tmp_path: Path):
+    log_path = tmp_path / "rakkib-install.ABC123"
+
+    script = f"""
+    set -euo pipefail
+    export RAKKIB_INSTALL_TEST_MODE=1
+    source ./install.sh
+    mktemp() {{
+      case "$1" in
+        *XXXXXX) printf '%s\n' {_q(log_path)} ;;
+        *) printf 'bad template: %s\n' "$1" >&2; return 1 ;;
+      esac
+    }}
+    run_quiet noop true
+    """
+
+    result = _run_install_script(script, tmp_path)
+    assert result.returncode == 0, result.stderr + result.stdout
+
+
 def test_macos_tooling_installs_clt_homebrew_and_git(tmp_path: Path):
     fakebin = tmp_path / "fakebin"
     fakebin.mkdir()

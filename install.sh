@@ -19,7 +19,7 @@ run_quiet() {
   shift
 
   local log_file
-  log_file="$(mktemp "${TMPDIR:-/tmp}/rakkib-install.XXXXXX.log")" \
+  log_file="$(mktemp "${TMPDIR:-/tmp}/rakkib-install.XXXXXX")" \
     || die "Failed to create a temporary log file. Check write access to ${TMPDIR:-/tmp} and rerun."
 
   if "$@" >"$log_file" 2>&1; then
