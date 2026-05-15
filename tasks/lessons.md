@@ -7,3 +7,4 @@
 - When a user specifies selection UX, match the requested default checked state exactly; do not assume pre-checked boxes are more convenient.
 - When asked to validate pending services, continue through the full fix, commit, push, runtime-sync, and bare-metal validation loop unless the user explicitly asks for discovery only.
 - For Questionary disabled choices, put the status in `Choice.disabled` only; do not duplicate it in `Choice.title` because the UI appends the disabled reason.
+- Questionary renders disabled choices with a leading dash; if the UX must not show that dash, keep the row enabled visually and reject the unavailable value in prompt handling.
