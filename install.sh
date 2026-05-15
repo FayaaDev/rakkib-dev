@@ -7,6 +7,9 @@ BRANCH="${RAKKIB_BRANCH:-runtime}"
 UPDATE_MODE="${RAKKIB_UPDATE_MODE:-reset}"
 VENV_INSTALL_IN_PROGRESS=0
 PLATFORM=""
+PYTHON_CMD="${RAKKIB_PYTHON:-}"
+MAC_PYTHON_VERSION="${RAKKIB_MAC_PYTHON_VERSION:-3.12.10}"
+MAC_PYTHON_SHA256="${RAKKIB_MAC_PYTHON_SHA256:-8373e58da4ea146b3eb1c1f9834f19a319440b6b679b06050b1f9ee3237aa8e4}"
 
 log()  { printf '==> %s\n' "$*"; }
 warn() { printf 'WARNING: %s\n' "$*" >&2; }
@@ -64,7 +67,11 @@ detect_platform() {
 # Pick install directory
 SUDO_USER_HOME=""
 if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
-  SUDO_USER_HOME="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6 || true)"
+  if command_exists getent; then
+    SUDO_USER_HOME="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6 || true)"
+  elif [[ -d "/Users/${SUDO_USER}" ]]; then
+    SUDO_USER_HOME="/Users/${SUDO_USER}"
+  fi
 fi
 
 if [[ -z "${RAKKIB_DIR:-}" && -f "pyproject.toml" && -d ".git" ]]; then
@@ -120,8 +127,13 @@ confirm_root() {
 }
 
 ensure_tooling() {
-  command_exists git  || die "git is required. Install git and rerun."
-  command_exists curl || warn "curl is not installed; install it before Cloudflare and download steps."
+  command_exists curl || die "curl is required. Install curl and rerun."
+  if ! command_exists git && [[ "${PLATFORM:-}" != "mac" ]]; then
+    die "git is required. Install git and rerun."
+  fi
+  if [[ "${PLATFORM:-}" == "mac" ]] && ! command_exists git; then
+    command_exists tar || die "tar is required to download Rakkib without git. Install tar and rerun."
+  fi
 }
 
 # Block until all dpkg/apt lock files are free.
@@ -164,18 +176,104 @@ apt_get() {
     apt-get -o "DPkg::Lock::Timeout=${timeout}" "$@"
 }
 
+python_has_venv() {
+  local candidate="$1"
+  [[ -n "$candidate" ]] || return 1
+  "$candidate" -c "import venv, ensurepip" >/dev/null 2>&1
+}
+
+select_python_cmd() {
+  local candidates=()
+  [[ -n "${RAKKIB_PYTHON:-}" ]] && candidates+=("${RAKKIB_PYTHON}")
+  if command_exists python3; then
+    candidates+=("$(command -v python3)")
+  fi
+  if [[ "${PLATFORM:-}" == "mac" ]]; then
+    local major_minor="${MAC_PYTHON_VERSION%.*}"
+    candidates+=(
+      "/Library/Frameworks/Python.framework/Versions/${major_minor}/bin/python3"
+      "/Library/Frameworks/Python.framework/Versions/Current/bin/python3"
+    )
+  fi
+
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ -x "$candidate" ]] && python_has_venv "$candidate"; then
+      PYTHON_CMD="$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+mac_python_pkg_url() {
+  printf 'https://www.python.org/ftp/python/%s/python-%s-macos11.pkg\n' "$MAC_PYTHON_VERSION" "$MAC_PYTHON_VERSION"
+}
+
+sha256_file() {
+  local path="$1"
+  if [[ "${PLATFORM:-}" == "mac" ]] && command_exists shasum; then
+    shasum -a 256 "$path" | awk '{print $1}'
+  elif command_exists sha256sum; then
+    sha256sum "$path" | awk '{print $1}'
+  elif command_exists shasum; then
+    shasum -a 256 "$path" | awk '{print $1}'
+  else
+    die "Cannot verify download checksum because neither sha256sum nor shasum is available."
+  fi
+}
+
+verify_sha256() {
+  local path="$1" expected="$2" actual
+  actual="$(sha256_file "$path")"
+  [[ "$actual" == "$expected" ]] || die "Checksum mismatch for ${path}. Expected ${expected}, got ${actual}. Delete the file and rerun."
+}
+
+install_python_macos_pkg() {
+  local pkg url
+  pkg="$(mktemp "${TMPDIR:-/tmp}/rakkib-python.XXXXXX.pkg")" \
+    || die "Failed to create a temporary Python package path. Check write access to ${TMPDIR:-/tmp} and rerun."
+  url="$(mac_python_pkg_url)"
+
+  log "Downloading Python ${MAC_PYTHON_VERSION} for macOS..."
+  run_quiet "Downloading Python ${MAC_PYTHON_VERSION}" curl -fsSL -o "$pkg" "$url" \
+    || die "Failed to download Python from ${url}. Check network access and rerun."
+  verify_sha256 "$pkg" "$MAC_PYTHON_SHA256"
+
+  log "Installing Python ${MAC_PYTHON_VERSION} via macOS installer..."
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    run_quiet "Installing Python ${MAC_PYTHON_VERSION}" installer -pkg "$pkg" -target / \
+      || die "Python installer failed. Open the installer log above, resolve the macOS installer error, and rerun."
+  else
+    run_quiet "Installing Python ${MAC_PYTHON_VERSION}" sudo installer -pkg "$pkg" -target / \
+      || die "Python installer failed. Re-run from an admin account or install Python from python.org, then rerun."
+  fi
+  rm -f "$pkg"
+}
+
+ensure_python_macos() {
+  if command_exists brew; then
+    log "Installing Python via existing Homebrew..."
+    run_quiet "Installing Python via Homebrew" brew install python \
+      || warn "Homebrew Python install failed; falling back to Python.org installer."
+    select_python_cmd && return 0
+  fi
+
+  install_python_macos_pkg
+  select_python_cmd || die "Python ${MAC_PYTHON_VERSION} installed, but venv/ensurepip is still unavailable. Open a new terminal and rerun."
+}
+
 # Install python3 + python3-venv via the system package manager.
 ensure_python3_and_venv() {
-  local need_python need_venv
-  need_python=0; need_venv=0
-  command_exists python3 || need_python=1
-  python3 -c "import venv, ensurepip" 2>/dev/null || need_venv=1
-
-  if [[ $need_python -eq 0 && $need_venv -eq 0 ]]; then
+  if select_python_cmd; then
     return 0
   fi
 
   if command_exists apt-get; then
+    local need_python need_venv
+    need_python=0; need_venv=0
+    command_exists python3 || need_python=1
+    python3 -c "import venv, ensurepip" 2>/dev/null || need_venv=1
     local pkgs=()
     [[ $need_python -eq 1 ]] && pkgs+=(python3)
     if [[ $need_venv -eq 1 ]]; then
@@ -194,27 +292,20 @@ ensure_python3_and_venv() {
       || die "Failed to install ${pkgs[*]}. Run 'sudo apt-get update && sudo apt-get install --no-install-recommends ${pkgs[*]}' and rerun install.sh."
   elif command_exists dnf; then
     local pkgs=()
-    [[ $need_python -eq 1 ]] && pkgs+=(python3)
+    command_exists python3 || pkgs+=(python3)
     # venv ships with python3 on Fedora/RHEL
     [[ ${#pkgs[@]} -gt 0 ]] && sudo dnf install -y "${pkgs[@]}"
   elif command_exists pacman; then
-    [[ $need_python -eq 1 ]] && sudo pacman -Sy --noconfirm python
+    command_exists python3 || sudo pacman -Sy --noconfirm python
+  elif [[ "${PLATFORM:-}" == "mac" ]]; then
+    ensure_python_macos
   elif command_exists brew; then
-    [[ $need_python -eq 1 ]] && brew install python
+    brew install python
   else
-    if [[ "${PLATFORM:-}" == "mac" ]]; then
-      die "Could not find python3 with venv/ensurepip. Install Python 3 for macOS from python.org or run 'brew install python', then rerun."
-    fi
     die "Could not find a package manager. Install python3 (with venv module) manually and rerun."
   fi
 
-  command_exists python3 || die "python3 installation failed. Install manually and rerun."
-  if ! python3 -c "import venv, ensurepip" 2>/dev/null; then
-    if [[ "${PLATFORM:-}" == "mac" ]]; then
-      die "python3 is missing venv/ensurepip. Install Python 3 for macOS from python.org or run 'brew install python', then rerun."
-    fi
-    die "python3-venv unavailable (including ensurepip). Install it manually and rerun."
-  fi
+  select_python_cmd || die "python3-venv unavailable (including ensurepip). Install it manually and rerun."
 }
 
 is_empty_dir() {
@@ -235,8 +326,87 @@ discard_repo_local_changes() {
   git -C "$INSTALL_DIR" clean -fd
 }
 
+repo_archive_url() {
+  local repo="$REPO_URL" path owner name
+  case "$repo" in
+    https://github.com/*/*.git) path="${repo#https://github.com/}"; path="${path%.git}" ;;
+    https://github.com/*/*) path="${repo#https://github.com/}"; path="${path%.git}" ;;
+    git@github.com:*/*.git) path="${repo#git@github.com:}"; path="${path%.git}" ;;
+    *) die "git is missing and RAKKIB_REPO is not a supported GitHub URL: ${REPO_URL}" ;;
+  esac
+  owner="${path%%/*}"
+  name="${path#*/}"
+  [[ -n "$owner" && -n "$name" ]] \
+    || die "Could not derive GitHub archive URL from RAKKIB_REPO=${REPO_URL}"
+  printf 'https://codeload.github.com/%s/%s/tar.gz/refs/heads/%s\n' "$owner" "$name" "$BRANCH"
+}
+
+repo_is_archive_checkout() {
+  [[ -f "${INSTALL_DIR}/.rakkib-archive-install" && -f "${INSTALL_DIR}/pyproject.toml" ]]
+}
+
+replace_dir_from_archive_source() {
+  local source_dir="$1" backup=""
+  mkdir -p "$(dirname "$INSTALL_DIR")"
+  if [[ -e "$INSTALL_DIR" ]]; then
+    backup="${INSTALL_DIR}.previous.$$"
+    mv "$INSTALL_DIR" "$backup" || die "Failed to move existing ${INSTALL_DIR} aside for update."
+  fi
+  mkdir -p "$INSTALL_DIR" || die "Failed to create ${INSTALL_DIR}."
+  if cp -R "${source_dir}/." "$INSTALL_DIR/"; then
+    rm -rf "$backup"
+  else
+    rm -rf "$INSTALL_DIR"
+    [[ -n "$backup" && -e "$backup" ]] && mv "$backup" "$INSTALL_DIR"
+    die "Failed to copy downloaded Rakkib archive into ${INSTALL_DIR}."
+  fi
+}
+
+prepare_repo_archive() {
+  local archive tmpdir extracted entries url
+  if [[ -e "$INSTALL_DIR" ]] && ! is_empty_dir "$INSTALL_DIR"; then
+    if repo_is_archive_checkout; then
+      case "$UPDATE_MODE" in
+        reset) ;;
+        skip)
+          warn "Using existing archive checkout because RAKKIB_UPDATE_MODE=skip."
+          return 0
+          ;;
+        *) die "invalid RAKKIB_UPDATE_MODE '${UPDATE_MODE}'. Use 'reset' or 'skip'." ;;
+      esac
+    else
+      die "target path exists and is not an empty Rakkib archive checkout: ${INSTALL_DIR}"
+    fi
+  fi
+
+  command_exists tar || die "tar is required to download Rakkib without git. Install tar and rerun."
+  archive="$(mktemp "${TMPDIR:-/tmp}/rakkib-source.XXXXXX.tar.gz")" \
+    || die "Failed to create a temporary archive path. Check write access to ${TMPDIR:-/tmp} and rerun."
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/rakkib-source.XXXXXX")" \
+    || die "Failed to create a temporary extraction directory. Check write access to ${TMPDIR:-/tmp} and rerun."
+  url="$(repo_archive_url)"
+
+  log "Downloading ${REPO_URL} branch ${BRANCH} without git"
+  run_quiet "Downloading ${REPO_URL} archive" curl -fsSL -o "$archive" "$url" \
+    || die "Failed to download ${url}. Check network access and branch name, then rerun."
+  run_quiet "Extracting ${REPO_URL} archive" tar -xzf "$archive" -C "$tmpdir" \
+    || die "Failed to extract downloaded Rakkib archive. Delete ${archive} and rerun."
+
+  entries=("$tmpdir"/*)
+  extracted="${entries[0]:-}"
+  [[ -d "$extracted" && -f "$extracted/pyproject.toml" ]] \
+    || die "Downloaded archive did not contain a Rakkib checkout."
+  replace_dir_from_archive_source "$extracted"
+  {
+    printf 'repo=%s\n' "$REPO_URL"
+    printf 'branch=%s\n' "$BRANCH"
+  } > "${INSTALL_DIR}/.rakkib-archive-install"
+  rm -rf "$archive" "$tmpdir"
+}
+
 prepare_repo() {
   if [[ -d "${INSTALL_DIR}/.git" ]]; then
+    command_exists git || die "Existing git checkout at ${INSTALL_DIR} requires git for updates. Install git or set RAKKIB_DIR to a new path."
     log "Using existing checkout: ${INSTALL_DIR}"
     if repo_has_local_changes; then
       case "$UPDATE_MODE" in
@@ -282,6 +452,14 @@ prepare_repo() {
     return 0
   fi
 
+  if ! command_exists git; then
+    if [[ "${PLATFORM:-}" == "mac" ]]; then
+      prepare_repo_archive
+      return 0
+    fi
+    die "git is required. Install git and rerun."
+  fi
+
   if [[ -e "$INSTALL_DIR" ]] && ! is_empty_dir "$INSTALL_DIR"; then
     die "target path exists and is not an empty git checkout: ${INSTALL_DIR}"
   fi
@@ -300,8 +478,8 @@ ensure_venv_install() {
 
   if [[ ! -d "$venv_dir" ]]; then
     log "Creating venv at ${venv_dir}"
-    run_quiet "Creating venv at ${venv_dir}" python3 -m venv "$venv_dir" \
-      || run_quiet "Creating venv at ${venv_dir} without pip" python3 -m venv --without-pip "$venv_dir" \
+    run_quiet "Creating venv at ${venv_dir}" "$PYTHON_CMD" -m venv "$venv_dir" \
+      || run_quiet "Creating venv at ${venv_dir} without pip" "$PYTHON_CMD" -m venv --without-pip "$venv_dir" \
       || die "Failed to create venv at ${venv_dir}. Install python3-venv and rerun."
   fi
 
@@ -330,10 +508,14 @@ ensure_venv_install() {
 ensure_shell_path() {
   local marker="# Added by Rakkib: user-local bin on PATH"
   local files=()
-  [[ -f "${HOME}/.bashrc"  ]] && files+=("${HOME}/.bashrc")
-  [[ -f "${HOME}/.zshrc"   ]] && files+=("${HOME}/.zshrc")
-  [[ -f "${HOME}/.profile" ]] && files+=("${HOME}/.profile")
-  [[ ${#files[@]} -eq 0 ]] && files=("${HOME}/.bashrc")
+  if [[ "${PLATFORM:-}" == "mac" ]]; then
+    files=("${HOME}/.zshrc" "${HOME}/.zprofile" "${HOME}/.profile")
+  else
+    [[ -f "${HOME}/.bashrc"  ]] && files+=("${HOME}/.bashrc")
+    [[ -f "${HOME}/.zshrc"   ]] && files+=("${HOME}/.zshrc")
+    [[ -f "${HOME}/.profile" ]] && files+=("${HOME}/.profile")
+    [[ ${#files[@]} -eq 0 ]] && files=("${HOME}/.bashrc")
+  fi
 
   for profile in "${files[@]}"; do
     grep -Fq "$marker" "$profile" 2>/dev/null && continue
@@ -362,7 +544,7 @@ Next step:
   rakkib web
 
 If rakkib is not on PATH yet, run one of:
-  source ~/.bashrc   |   source ~/.zshrc   |   source ~/.profile
+  source ~/.zshrc   |   source ~/.zprofile   |   source ~/.profile
 
 Or run directly:
   ${HOME}/.local/bin/rakkib web
@@ -415,4 +597,6 @@ main() {
   print_next_steps
 }
 
-main "$@"
+if [[ "${RAKKIB_INSTALL_TEST_MODE:-0}" != "1" ]]; then
+  main "$@"
+fi
