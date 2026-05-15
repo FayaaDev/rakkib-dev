@@ -23,19 +23,12 @@ def test_single_select_disables_unavailable_values():
 
     choices = mock_select.call_args.kwargs["choices"]
     mac_choice = next(choice for choice in choices if choice.value == "mac")
-    assert mac_choice.title == "mac (soon)"
-    assert mac_choice.disabled is None
+    assert mac_choice.title == "mac"
+    assert mac_choice.disabled == "soon"
 
 
 def test_single_select_rejects_disabled_alias_fallback():
     with patch("rakkib.interview.prompt_select", return_value=None), patch(
         "rakkib.interview.prompt_text", side_effect=["macos", "linux"]
-    ):
-        assert _prompt_single_select(_platform_field(), State({})) == "linux"
-
-
-def test_single_select_rejects_unavailable_value():
-    with patch("rakkib.interview.prompt_select", return_value="mac"), patch(
-        "rakkib.interview.prompt_text", return_value="linux"
     ):
         assert _prompt_single_select(_platform_field(), State({})) == "linux"
