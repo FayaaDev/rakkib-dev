@@ -492,9 +492,8 @@ def _prompt_single_select(field: FieldDef, state: State) -> str:
         if disabled_reason:
             choices.append(
                 Choice(
-                    title=canonical,
+                    title=f"{canonical} ({disabled_reason})",
                     value=canonical,
-                    disabled=disabled_reason,
                 )
             )
         else:
