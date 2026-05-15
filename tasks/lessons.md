@@ -7,3 +7,4 @@
 - When a user specifies selection UX, match the requested default checked state exactly; do not assume pre-checked boxes are more convenient.
 - When asked to validate pending services, continue through the full fix, commit, push, runtime-sync, and bare-metal validation loop unless the user explicitly asks for discovery only.
 - For unavailable Questionary options, keep them as real disabled choices even if the UI shows a marker; making them visually enabled can make unsupported options clickable.
+- Do not derive user-facing select labels from aliases; add explicit display labels when a canonical value needs descriptive copy.
