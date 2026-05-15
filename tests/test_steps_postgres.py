@@ -74,6 +74,7 @@ def test_generate_init_sql_falls_back_to_flat_state_secret(tmp_path):
     state = _make_state(tmp_path)
     state.set("NOCODB_DB_PASS", "flat-nocodb-pass")
     state.set("secrets.values.NOCODB_DB_PASS", None)
+    state.set("secrets.values.N8N_DB_PASS", "n8n-pass")
 
     content = postgres._generate_init_sql(state)
 
@@ -203,6 +204,9 @@ def test_postgres_run_generates_secrets(tmp_path):
 def test_postgres_run_no_secrets_generate_when_mode_not_generate(tmp_path):
     state = _make_state(tmp_path)
     state.set("secrets.mode", "manual")
+    state.set("POSTGRES_PASSWORD", "postgres-pass")
+    state.set("NOCODB_DB_PASS", "nocodb-pass")
+    state.set("N8N_DB_PASS", "n8n-pass")
     assert state.get("secrets.values.POSTGRES_PASSWORD") is None
 
     with patch("rakkib.steps.postgres._wait_for_healthy"):
@@ -227,16 +231,24 @@ def test_postgres_run_compose_up_failure(tmp_path):
 
 
 class TestWaitForHealthy:
+    @patch("rakkib.steps.postgres.progress_wait", return_value=True)
     @patch("rakkib.steps.postgres.docker_run")
-    @patch("rakkib.steps.postgres.time")
-    def test_returns_when_healthy(self, mock_time, mock_run):
-        mock_run.return_value = MagicMock(stdout="healthy\n")
+    def test_returns_when_healthy(self, mock_run, mock_wait):
+        def fake_wait(_message, _timeout, poll):
+            return poll()
+
+        mock_wait.side_effect = fake_wait
+        mock_run.return_value = MagicMock(stdout="healthy\n", returncode=0)
         postgres._wait_for_healthy()
         mock_run.assert_called_once()
 
+    @patch("rakkib.steps.postgres.progress_wait")
     @patch("rakkib.steps.postgres.docker_run")
-    @patch("rakkib.steps.postgres.time")
-    def test_falls_back_to_tcp_pg_isready(self, mock_time, mock_run):
+    def test_falls_back_to_tcp_pg_isready(self, mock_run, mock_wait):
+        def fake_wait(_message, _timeout, poll):
+            return poll()
+
+        mock_wait.side_effect = fake_wait
         mock_run.side_effect = [MagicMock(stdout="<no value>\n", returncode=0), MagicMock(returncode=0)]
 
         postgres._wait_for_healthy()
@@ -251,9 +263,9 @@ class TestWaitForHealthy:
             "postgres",
         ]
 
+    @patch("rakkib.steps.postgres.progress_wait", return_value=False)
     @patch("rakkib.steps.postgres.docker_run")
-    @patch("rakkib.steps.postgres.time")
-    def test_raises_on_timeout(self, mock_time, mock_run):
+    def test_raises_on_timeout(self, mock_run, _mock_wait):
         mock_run.return_value = MagicMock(stdout="starting\n")
         with pytest.raises(RuntimeError, match="did not become healthy"):
             postgres._wait_for_healthy(timeout=2)

@@ -181,7 +181,7 @@ class TestRun:
             verify_step.run(state)
         captured = capsys.readouterr()
         assert "VERIFICATION SUMMARY" in captured.out
-        assert "HANDOFF PROMPT" in captured.out
+        assert "Some verification checks failed" in captured.out
 
     def test_prints_success_when_all_pass(self, capsys):
         state = State({})

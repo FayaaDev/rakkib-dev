@@ -113,6 +113,20 @@ class TestRunInterview:
         mock_confirm.assert_called_once()
         assert mock_run_phase.call_count == 0
 
+    @patch("rakkib.interview.load_all_schemas")
+    @patch("rakkib.interview._run_phase")
+    def test_unconfirmed_state_restarts_from_phase_one(self, mock_run_phase, mock_load):
+        schema1 = MagicMock(phase=1)
+        schema2 = MagicMock(phase=2)
+        schema3 = MagicMock(phase=3)
+        mock_load.return_value = [schema1, schema2, schema3]
+
+        state = State({"platform": "linux", "confirmed": False})
+        with patch.object(state, "resume_phase", return_value=7):
+            run_interview(state)
+
+        assert mock_run_phase.call_count == 3
+
 
 # ---------------------------------------------------------------------------
 # _run_field
@@ -202,7 +216,7 @@ class TestRunField:
         )
         with patch("rakkib.interview.prompt_checkbox", return_value=["homepage"]):
             _run_field(field, empty_state)
-        assert empty_state.get("foundation_services") == ["nocodb", "homepage"]
+        assert empty_state.get("foundation_services") == ["nocodb", "uptime-kuma"]
 
     def test_multi_select_add(self, empty_state):
         field = FieldDef(
@@ -415,6 +429,14 @@ class TestPromptText:
         ):
             assert _prompt_text(field, State({})) == "alice"
 
+    def test_existing_state_value_used_as_default(self):
+        field = FieldDef(id="server_name", type="text", prompt="Server name?", records=["server_name"])
+        state = State({"server_name": "old-server"})
+        with patch("rakkib.interview.prompt_text", return_value="old-server") as mock_ask:
+            result = _prompt_text(field, state)
+            mock_ask.assert_called_once_with("Server name?", default="old-server")
+            assert result == "old-server"
+
 
 class TestPromptConfirm:
     def test_boolean_confirm(self):
@@ -447,6 +469,44 @@ class TestPromptConfirm:
         ):
             result = _prompt_confirm(field, State({}))
             assert result == "manual"
+
+    def test_boolean_confirm_uses_existing_state_default(self):
+        field = FieldDef(
+            id="confirmed",
+            type="confirm",
+            prompt="Proceed?",
+            accepted_inputs={"y": True, "n": False},
+            records=["confirmed"],
+        )
+        with patch("rakkib.interview.prompt_confirm", return_value=False) as mock_ask:
+            assert _prompt_confirm(field, State({"confirmed": False})) is False
+            mock_ask.assert_called_once_with("Proceed?", default=False)
+
+    def test_boolean_confirm_uses_schema_default_when_state_missing(self):
+        field = FieldDef(
+            id="confirmed",
+            type="confirm",
+            prompt="Proceed?",
+            default=True,
+            accepted_inputs={"y": True, "n": False},
+            records=["confirmed"],
+        )
+        with patch("rakkib.interview.prompt_confirm", return_value=True) as mock_ask:
+            assert _prompt_confirm(field, State({})) is True
+            mock_ask.assert_called_once_with("Proceed?", default=True)
+
+    def test_mapped_confirm_uses_existing_state_default(self):
+        field = FieldDef(
+            id="mode",
+            type="confirm",
+            prompt="Mode?",
+            accepted_inputs={"y": "generate", "n": "manual"},
+            records=["secrets.mode"],
+        )
+        with patch("rakkib.interview.prompt_select", return_value="n") as mock_ask:
+            result = _prompt_confirm(field, State({"secrets": {"mode": "manual"}}))
+            assert result == "manual"
+            mock_ask.assert_called_once_with("Mode?", choices=["y", "n"], default="n")
 
 
 class TestPromptSingleSelect:
@@ -481,6 +541,19 @@ class TestPromptSingleSelect:
         with patch("rakkib.interview.prompt_select", side_effect=[None]):
             with patch("rakkib.interview.prompt_text", return_value="linux"):
                 assert _prompt_single_select(field, State({})) == "linux"
+
+    def test_existing_state_value_used_as_default(self):
+        field = FieldDef(
+            id="platform",
+            type="single_select",
+            prompt="Platform?",
+            canonical_values=["linux", "mac"],
+            records=["platform"],
+        )
+        with patch("rakkib.interview.prompt_select", return_value="linux") as mock_ask:
+            assert _prompt_single_select(field, State({"platform": "linux"})) == "linux"
+            mock_ask.assert_called_once()
+            assert mock_ask.call_args.kwargs["default"] == "linux"
 
 
 class TestPromptMultiSelect:
@@ -522,13 +595,29 @@ class TestPromptMultiSelect:
         with patch("rakkib.interview.prompt_checkbox", return_value=[]):
             assert _prompt_multi_select(field, State({})) == ["a", "b"]
 
+    def test_existing_state_values_are_prechecked(self):
+        field = FieldDef(
+            id="optional",
+            type="multi_select",
+            selection_mode="add_to_empty",
+            prompt="Add?",
+            canonical_values=["x", "y"],
+            records=["selected_services"],
+        )
+        with patch("rakkib.interview.prompt_checkbox", return_value=["x"]) as mock_ask:
+            assert _prompt_multi_select(field, State({"selected_services": ["x"]})) == ["x"]
+            choices = mock_ask.call_args.kwargs["choices"]
+            assert [choice.checked for choice in choices] == [True, False]
+
 
 class TestHandleServiceCatalog:
     def test_groups_optional_services_by_category(self, sample_schema, empty_state):
         registry = {
             "services": [
-                {"id": "n8n", "homepage": {"category": "Automation"}},
-                {"id": "immich", "homepage": {"category": "Media"}},
+                {"id": "nocodb", "state_bucket": "foundation_services"},
+                {"id": "homepage", "state_bucket": "foundation_services"},
+                {"id": "n8n", "state_bucket": "selected_services", "homepage": {"category": "Automation"}},
+                {"id": "immich", "state_bucket": "selected_services", "homepage": {"category": "Media"}},
             ]
         }
         sample_schema.service_catalog["optional_services"].append(
@@ -550,6 +639,23 @@ class TestHandleServiceCatalog:
         assert "━━ Media ━━" in titles
         assert empty_state.get("foundation_services") == ["nocodb"]
         assert empty_state.get("selected_services") == ["n8n"]
+
+    def test_preserves_existing_checked_choices_on_rerun(self, sample_schema, empty_state):
+        registry = {"services": [{"id": "n8n", "homepage": {"category": "Automation"}}]}
+        empty_state.set("foundation_services", ["homepage"])
+        empty_state.set("selected_services", ["n8n"])
+        empty_state.set("host_addons", [])
+
+        with (
+            patch("rakkib.interview.load_service_registry", return_value=registry),
+            patch("rakkib.interview.prompt_checkbox", return_value=["homepage", "n8n"]) as mock_checkbox,
+        ):
+            _handle_service_catalog(sample_schema, empty_state)
+
+        choices = {choice.value: choice for choice in mock_checkbox.call_args.kwargs["choices"] if not choice.disabled}
+        assert choices["nocodb"].checked is False
+        assert choices["homepage"].checked is True
+        assert choices["n8n"].checked is True
 
 
 # ---------------------------------------------------------------------------

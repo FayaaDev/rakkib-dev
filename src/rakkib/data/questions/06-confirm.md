@@ -56,7 +56,8 @@ fields:
       - secrets.mode
   - id: confirmed
     type: confirm
-    prompt: Proceed with deployment using the above configuration? [y/N]
+    prompt: Proceed with deployment using the above configuration? [Y/n]
+    default: true
     accepted_inputs:
       y: true
       n: false
@@ -112,7 +113,7 @@ Then ask for one final yes/no confirmation.
 
 ## Question to Ask
 
-Ask: "Proceed with deployment using the above configuration? [y/N]"
+Ask: "Proceed with deployment using the above configuration? [Y/n]"
 
 Accepted answers: `y` or `n`.
 

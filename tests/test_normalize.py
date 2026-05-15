@@ -31,7 +31,7 @@ class TestEvalWhen:
     def test_in_list(self):
         state = State({"selected_services": ["n8n", "immich"]})
         assert eval_when("n8n in selected_services", state) is True
-        assert eval_when("immich in selected_services", state) is False
+        assert eval_when("mealie in selected_services", state) is False
 
     def test_and(self):
         state = State({"tunnel_strategy": "new", "accept_browser_login": False})
@@ -72,7 +72,7 @@ class TestResolveNumericAliases:
 
     def test_numeric_aliases(self):
         aliases = {"1": "nocodb", "2": "homepage", "3": "uptime-kuma"}
-        assert resolve_numeric_aliases("1 3", aliases) == ["nocodb", "homepage"]
+        assert resolve_numeric_aliases("1 3", aliases) == ["nocodb", "uptime-kuma"]
 
     def test_mixed(self):
         aliases = {"6": "n8n"}

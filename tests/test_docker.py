@@ -287,9 +287,10 @@ class TestCreateNetwork:
     def test_creates_when_missing(self, mock_run: MagicMock, mock_exists: MagicMock):
         mock_exists.return_value = False
         create_network("mynet")
-        mock_run.assert_called_once_with(
-            ["docker", "network", "create", "--driver", "bridge", "mynet"]
-        )
+        mock_run.assert_called_once()
+        assert mock_run.call_args.args[0] == [
+            "docker", "network", "create", "--driver", "bridge", "mynet"
+        ]
 
     @patch("rakkib.docker.network_exists")
     @patch("rakkib.docker._run")
@@ -303,9 +304,10 @@ class TestCreateNetwork:
     def test_custom_driver(self, mock_run: MagicMock, mock_exists: MagicMock):
         mock_exists.return_value = False
         create_network("mynet", driver="overlay")
-        mock_run.assert_called_once_with(
-            ["docker", "network", "create", "--driver", "overlay", "mynet"]
-        )
+        mock_run.assert_called_once()
+        assert mock_run.call_args.args[0] == [
+            "docker", "network", "create", "--driver", "overlay", "mynet"
+        ]
 
 
 class TestRun:

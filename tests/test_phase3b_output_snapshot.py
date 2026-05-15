@@ -44,6 +44,8 @@ def _render_output_tree(tmp_path: Path) -> Path:
         patch("rakkib.steps.postgres._wait_for_healthy"),
         patch("rakkib.steps.postgres._apply_sql"),
         patch("rakkib.steps.services.compose_up"),
+        patch("rakkib.steps.services.create_network"),
+        patch("rakkib.steps.services.health_check", return_value=True),
         patch("rakkib.steps.services._reload_caddy"),
         patch("rakkib.steps.services.subprocess.run", side_effect=_fake_run),
         patch("rakkib.hooks.services.docker_run", side_effect=_fake_run),

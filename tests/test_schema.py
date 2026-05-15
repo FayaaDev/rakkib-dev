@@ -44,6 +44,8 @@ def test_phase_1_platform_field():
     # Docker confirm
     docker = field_map["docker_installed"]
     assert docker.type == "confirm"
+    assert docker.prompt == "Is Docker already installed and running on this machine? [Y/n]"
+    assert docker.default is True
     assert docker.accepted_inputs["y"] is True
     assert docker.accepted_inputs["n"] is False
 
@@ -240,6 +242,8 @@ def test_phase_6_summary_and_confirm():
 
     confirmed = field_map["confirmed"]
     assert confirmed.type == "confirm"
+    assert confirmed.prompt == "Proceed with deployment using the above configuration? [Y/n]"
+    assert confirmed.default is True
     assert confirmed.records == ["confirmed"]
 
 

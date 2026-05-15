@@ -101,7 +101,15 @@ class TestRun:
         assert "#" not in output
 
     def test_run_rejects_missing_zone(self, tmp_path):
-        state = _make_state(tmp_path, cloudflare={"zone_in_cloudflare": False})
+        state = _make_state(
+            tmp_path,
+            cloudflare={
+                "auth_method": "browser_login",
+                "tunnel_strategy": "new",
+                "tunnel_name": "rakkib-example",
+                "zone_in_cloudflare": False,
+            },
+        )
         with pytest.raises(RuntimeError, match="not active in Cloudflare"):
             cloudflare.run(state)
 
@@ -123,9 +131,13 @@ class TestRun:
 
     def test_run_rejects_missing_cloudflared(self, tmp_path):
         state = _make_state(tmp_path)
-        with patch("rakkib.steps.cloudflare._run") as mock_run:
-            mock_run.side_effect = RuntimeError("not found")
-            with pytest.raises(RuntimeError, match="cloudflared CLI is not installed"):
+        with (
+            patch("rakkib.steps.cloudflare._cloudflared_bin", return_value=str(tmp_path / "missing-cloudflared")),
+            patch("rakkib.steps.cloudflare.shutil.which", return_value=None),
+            patch("rakkib.steps.cloudflare.attempt_fix_cloudflared", return_value="install failed"),
+            patch("rakkib.steps.cloudflare._run", side_effect=RuntimeError("not found")),
+        ):
+            with pytest.raises(RuntimeError, match="cloudflared installation failed"):
                 cloudflare.run(state)
 
     def test_run_browser_login_copies_cert(self, tmp_path):
@@ -482,16 +494,16 @@ class TestRun:
         cloudflared_dir.mkdir(parents=True)
         (cloudflared_dir / "cert.pem").write_text("cert")
 
+        created_tunnel = {"name": None}
+
         def run_side_effect(cmd, **kwargs):
             if cmd[:4] == ["cloudflared", "tunnel", "list", "--output"]:
+                tunnels = [{"name": "rakkib-example", "id": "stale-uuid"}]
+                if created_tunnel["name"]:
+                    tunnels.append({"name": created_tunnel["name"], "id": "fresh-uuid"})
                 result = MagicMock()
                 result.returncode = 0
-                result.stdout = json.dumps(
-                    [
-                        {"name": "rakkib-example", "id": "stale-uuid"},
-                        {"name": "rakkib-example-1700000000", "id": "fresh-uuid"},
-                    ]
-                )
+                result.stdout = json.dumps(tunnels)
                 result.stderr = ""
                 return result
             if cmd[:3] == ["cloudflared", "--version"]:
@@ -512,7 +524,8 @@ class TestRun:
                 result.stdout = ""
                 result.stderr = "tunnel with that name already exists"
                 return result
-            if cmd[:4] == ["cloudflared", "tunnel", "create", "rakkib-example-1700000000"]:
+            if cmd[:3] == ["cloudflared", "tunnel", "create"] and cmd[3].startswith("rakkib-example-170000000"):
+                created_tunnel["name"] = cmd[3]
                 result = MagicMock()
                 result.returncode = 0
                 result.stdout = ""
@@ -584,7 +597,7 @@ class TestRun:
         state = _make_state(tmp_path)
         with patch("rakkib.steps.cloudflare._run") as mock_run:
             mock_run.side_effect = _subprocess_side_effect()
-            with pytest.raises(RuntimeError, match="Tunnel credentials file not found"):
+            with pytest.raises(RuntimeError, match="could not locate its credentials file"):
                 cloudflare.run(state)
 
 
@@ -666,8 +679,14 @@ class TestVerify:
 
         with patch("rakkib.steps.cloudflare.subprocess.run") as mock_run:
             with patch("rakkib.steps.cloudflare.container_running", return_value=True):
-                mock_run.side_effect = _subprocess_side_effect()
-                result = cloudflare.verify(state)
+                with patch("rakkib.steps.cloudflare.docker_run") as mock_docker_run:
+                    mock_docker_run.return_value = MagicMock(
+                        returncode=0,
+                        stdout="Registered tunnel connection\n",
+                        stderr="",
+                    )
+                    mock_run.side_effect = _subprocess_side_effect()
+                    result = cloudflare.verify(state)
 
         assert result.ok is True
         assert result.step == "cloudflare"
