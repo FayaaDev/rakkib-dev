@@ -155,6 +155,17 @@ xcode_clt_installed() {
   xcode-select -p >/dev/null 2>&1
 }
 
+select_xcode_command_line_tools() {
+  local clt_dir="/Library/Developer/CommandLineTools"
+  local waited=0
+  while [[ ! -d "$clt_dir" && $waited -lt 60 ]]; do
+    sleep 5
+    waited=$((waited + 5))
+  done
+  [[ -d "$clt_dir" ]] || return 1
+  run_root xcode-select --switch "$clt_dir"
+}
+
 run_root() {
   if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
     "$@"
@@ -180,6 +191,7 @@ install_xcode_command_line_tools() {
   log "Installing Xcode Command Line Tools..."
   run_quiet "Installing Xcode Command Line Tools" run_root softwareupdate -i "$label" --verbose \
     || die "Xcode Command Line Tools installation failed. Run 'xcode-select --install', complete the Apple installer, then rerun."
+  select_xcode_command_line_tools || die "Xcode Command Line Tools installed, but macOS did not create /Library/Developer/CommandLineTools. Run 'xcode-select --install', complete the Apple installer, then rerun."
   xcode_clt_installed || die "Xcode Command Line Tools installed, but xcode-select is still not configured. Run 'sudo xcode-select --reset' and rerun."
 }
 

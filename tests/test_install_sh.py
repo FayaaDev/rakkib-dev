@@ -91,6 +91,7 @@ def test_macos_tooling_installs_clt_homebrew_and_git(tmp_path: Path):
     PLATFORM=mac
     PATH={_q(fakebin)}:/usr/bin:/bin
     xcode_clt_installed() {{ [[ -f {_q(clt_ready)} ]]; }}
+    select_xcode_command_line_tools() {{ [[ -f {_q(clt_ready)} ]]; }}
     git_usable() {{ [[ -f {_q(git_ready)} ]]; }}
     ensure_homebrew() {{ printf 'homebrew\n' >> {_q(calls)}; }}
     ensure_brew_package() {{ printf '%s %s %s\n' "$1" "$2" "${{3:-0}}" >> {_q(calls)}; : > {_q(git_ready)}; }}
@@ -104,6 +105,57 @@ def test_macos_tooling_installs_clt_homebrew_and_git(tmp_path: Path):
     test -f {_q(clt_ready)}
     test -f {_q(git_ready)}
     [[ "$(cat {_q(calls)})" == $'homebrew\ngit git 1' ]]
+    """
+
+    result = _run_install_script(script, tmp_path)
+    assert result.returncode == 0, result.stderr + result.stdout
+
+
+def test_macos_clt_install_selects_command_line_tools(tmp_path: Path):
+    fakebin = tmp_path / "fakebin"
+    fakebin.mkdir()
+    clt_ready = tmp_path / "clt-ready"
+    selected = tmp_path / "selected"
+
+    _write_executable(
+        fakebin / "softwareupdate",
+        f"""
+        #!/usr/bin/env bash
+        if [[ "$1" == "-l" ]]; then
+          printf '   * Label: Command Line Tools for Xcode-16.4\n'
+          exit 0
+        fi
+        if [[ "$1" == "-i" ]]; then
+          : > {_q(clt_ready)}
+          exit 0
+        fi
+        exit 1
+        """,
+    )
+    _write_executable(
+        fakebin / "sudo",
+        """
+        #!/usr/bin/env bash
+        exec "$@"
+        """,
+    )
+
+    script = f"""
+    set -euo pipefail
+    export RAKKIB_INSTALL_TEST_MODE=1
+    source ./install.sh
+    PLATFORM=mac
+    PATH={_q(fakebin)}:/usr/bin:/bin
+    xcode_clt_installed() {{ [[ -f {_q(selected)} ]]; }}
+    select_xcode_command_line_tools() {{ [[ -f {_q(clt_ready)} ]] && : > {_q(selected)}; }}
+    command_exists() {{
+      case "$1" in
+        softwareupdate|sudo) return 0 ;;
+        *) command -v "$1" >/dev/null 2>&1 ;;
+      esac
+    }}
+    install_xcode_command_line_tools
+    test -f {_q(selected)}
     """
 
     result = _run_install_script(script, tmp_path)
