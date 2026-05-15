@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 
-from rakkib.cli import _build_add_choices, _print_deployed_urls, cli
+from rakkib.cli import _build_add_choices, _postgres_sync_needed, _print_deployed_urls, cli
 from rakkib.state import State
 from rakkib.web.host_auth import HostAuthStatus
 
@@ -460,6 +460,14 @@ class TestAdd:
             "  n8n [Workflow automation]"
         )
 
+    def test_postgres_sync_needed_only_for_postgres_service_delta(self):
+        registry = self._make_registry()
+
+        assert _postgres_sync_needed(registry, {"homepage", "nocodb"}, {"homepage", "nocodb", "openclaw"}) is False
+        assert _postgres_sync_needed(registry, {"homepage"}, {"homepage", "n8n"}) is True
+        assert _postgres_sync_needed(registry, {"homepage", "n8n"}, {"homepage"}) is True
+        assert _postgres_sync_needed(registry, {"homepage", "n8n"}, {"homepage", "n8n"}) is True
+
     def test_add_rejects_invalid_dependency_selection(self, tmp_path: Path):
         runner = CliRunner()
         repo_dir = tmp_path / "repo"
@@ -512,9 +520,9 @@ class TestAdd:
         assert "synced successfully" in result.output
         mock_confirm.assert_not_called()
         mock_secrets.assert_called_once()
-        mock_postgres_run.assert_called_once()
+        mock_postgres_run.assert_not_called()
         mock_sync_artifacts.assert_called_once()
-        assert call_order == ["secrets", "postgres", "services"]
+        assert call_order == ["secrets", "services"]
 
         saved_state = State.load(state_file)
         assert saved_state.get("foundation_services") == ["homepage"]
@@ -567,13 +575,14 @@ class TestAdd:
             patch("rakkib.cli.prompt_checkbox", return_value=["openclaw"]),
             patch("rakkib.cli.prompt_confirm", return_value=True),
             patch("rakkib.steps.services._generate_missing_secrets"),
-            patch("rakkib.steps.postgres.run"),
+            patch("rakkib.steps.postgres.run") as mock_postgres,
             patch("rakkib.steps.services.run"),
         ):
             mock_reg.return_value = self._make_registry()
             result = runner.invoke(cli, ["add"], obj={"repo_dir": repo_dir})
 
         assert result.exit_code == 0
+        mock_postgres.assert_not_called()
         saved_state = State.load(state_file)
         assert saved_state.get("selected_services") == ["openclaw"]
         assert saved_state.get("subdomains.openclaw") == "claw"
@@ -596,7 +605,7 @@ class TestAdd:
             patch("rakkib.cli.prompt_checkbox") as mock_checkbox,
             patch("rakkib.cli.prompt_confirm", return_value=True),
             patch("rakkib.steps.services._generate_missing_secrets"),
-            patch("rakkib.steps.postgres.run"),
+            patch("rakkib.steps.postgres.run") as mock_postgres,
             patch("rakkib.steps.services.run_single_service") as mock_run_single,
         ):
             mock_reg.return_value = self._make_registry()
@@ -604,12 +613,41 @@ class TestAdd:
 
         assert result.exit_code == 0
         mock_checkbox.assert_not_called()
+        mock_postgres.assert_not_called()
         mock_run_single.assert_called_once()
         assert mock_run_single.call_args.args[1] == "openclaw"
         saved_state = State.load(state_file)
         assert saved_state.get("foundation_services") == ["homepage"]
         assert saved_state.get("selected_services") == ["openclaw"]
         assert saved_state.get("host_gateway") == "172.18.0.1"
+
+    def test_add_host_service_argument_skips_postgres_with_existing_db_services(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+        state_file = repo_dir / ".fss-state.yaml"
+        state_file.write_text(
+            "platform: linux\n"
+            "foundation_services:\n  - homepage\n  - nocodb\n"
+            "selected_services: []\n"
+        )
+
+        with (
+            patch("rakkib.steps.services._load_registry") as mock_reg,
+            patch("rakkib.cli.prompt_checkbox") as mock_checkbox,
+            patch("rakkib.cli.prompt_confirm", return_value=True),
+            patch("rakkib.steps.services._generate_missing_secrets"),
+            patch("rakkib.steps.postgres.run") as mock_postgres,
+            patch("rakkib.steps.services.run_single_service") as mock_run_single,
+        ):
+            mock_reg.return_value = self._make_registry()
+            result = runner.invoke(cli, ["add", "openclaw"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 0
+        mock_checkbox.assert_not_called()
+        mock_postgres.assert_not_called()
+        mock_run_single.assert_called_once()
+        assert mock_run_single.call_args.args[1] == "openclaw"
 
     def test_add_service_option_adds_service_without_checkbox(self, tmp_path: Path):
         runner = CliRunner()
@@ -627,7 +665,7 @@ class TestAdd:
             patch("rakkib.cli.prompt_checkbox") as mock_checkbox,
             patch("rakkib.cli.prompt_confirm", return_value=True),
             patch("rakkib.steps.services._generate_missing_secrets"),
-            patch("rakkib.steps.postgres.run"),
+            patch("rakkib.steps.postgres.run") as mock_postgres,
             patch("rakkib.steps.services.run_single_service") as mock_run_single,
         ):
             mock_reg.return_value = self._make_registry()
@@ -635,6 +673,7 @@ class TestAdd:
 
         assert result.exit_code == 0
         mock_checkbox.assert_not_called()
+        mock_postgres.assert_not_called()
         mock_run_single.assert_called_once()
         assert mock_run_single.call_args.args[1] == "openclaw"
         saved_state = State.load(state_file)
@@ -693,7 +732,7 @@ class TestAdd:
 
         assert result.exit_code == 0
         mock_checkbox.assert_not_called()
-        mock_postgres.assert_called_once()
+        mock_postgres.assert_not_called()
         mock_run.assert_not_called()
         mock_run_single.assert_called_once()
         assert mock_run_single.call_args.args[1] == "immich"

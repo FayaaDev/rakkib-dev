@@ -327,7 +327,8 @@ def _sync_services_to_state_selection(state: State, state_path: Path) -> bool:
 
         _apply_service_selection(state, registry, desired_ids)
         services_step._generate_missing_secrets(state)
-        postgres_step.run(state)
+        if _postgres_sync_needed(registry, previous_ids, desired_ids):
+            postgres_step.run(state)
 
         added = sorted(desired_ids - previous_ids)
         if added:
@@ -344,6 +345,14 @@ def _sync_services_to_state_selection(state: State, state_path: Path) -> bool:
     _persist_deployed_selection(state)
     state.save(state_path)
     return True
+
+
+def _postgres_sync_needed(registry: dict[str, Any], previous_ids: set[str], desired_ids: set[str]) -> bool:
+    """Return true when the selection change affects shared Postgres resources."""
+    by_id = {svc["id"]: svc for svc in registry["services"]}
+    changed_ids = previous_ids ^ desired_ids
+    candidate_ids = changed_ids if changed_ids else desired_ids
+    return any(bool((by_id.get(svc_id) or {}).get("postgres")) for svc_id in candidate_ids)
 
 
 def _run_best_effort(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
@@ -935,7 +944,8 @@ def add(ctx: click.Context, service: str | None, service_option: str | None, yes
         services_step._generate_missing_secrets(state)
         state.save(state_path)
 
-        postgres_step.run(state)
+        if _postgres_sync_needed(registry, old_selected, selected_ids):
+            postgres_step.run(state)
         if service:
             services_step.run_single_service(state, service)
         elif added:

@@ -117,7 +117,20 @@ def _generate_init_sql(state: State) -> str:
     return "\n".join(lines)
 
 
-def _apply_sql(sql: str) -> None:
+def _permission_denied_hint(stderr: str, data_root: Path | None) -> str | None:
+    lowered = stderr.lower()
+    if "global/pg_filenode.map" not in lowered or "permission denied" not in lowered:
+        return None
+
+    data_dir = data_root / "data" / "postgres" / "data" if data_root else Path("<data_root>/data/postgres/data")
+    return (
+        f"Postgres cannot read its mounted data directory ({data_dir}). "
+        "Repair ownership on the target server, then restart Postgres: "
+        f"`sudo chown -R 999:999 {data_dir} && sudo chmod -R u+rwX,go-rwx {data_dir} && docker restart postgres`."
+    )
+
+
+def _apply_sql(sql: str, data_root: Path | None = None) -> None:
     """Execute *sql* directly inside the postgres container via psql."""
     result = docker_run(
         ["exec", "-i", "postgres", "psql", "-h", "127.0.0.1", "-U", "postgres"],
@@ -125,8 +138,11 @@ def _apply_sql(sql: str) -> None:
         check=False,
     )
     if result.returncode != 0:
+        stderr = result.stderr.strip()
+        hint = _permission_denied_hint(stderr, data_root)
+        detail = f"{stderr}\n\n{hint}" if hint else stderr
         raise RuntimeError(
-            f"psql failed (rc={result.returncode}):\n{result.stderr.strip()}"
+            f"psql failed (rc={result.returncode}):\n{detail}"
         )
 
 
@@ -210,7 +226,7 @@ def run(state: State) -> None:
     #    (The init-scripts directory is only executed by postgres on first boot;
     #    re-runs would leave stale passwords without this direct apply.)
     with progress_spinner("Applying Postgres roles and databases..."):
-        _apply_sql(sql)
+        _apply_sql(sql, data_root=data_root)
 
     log_path.write_text("postgres step completed\n")
 

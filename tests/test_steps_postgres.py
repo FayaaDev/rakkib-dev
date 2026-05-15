@@ -361,3 +361,18 @@ def test_apply_sql_uses_tcp_psql():
         input="select 1;",
         check=False,
     )
+
+
+def test_apply_sql_permission_denied_adds_data_dir_repair_hint(tmp_path):
+    stderr = 'psql: error: could not open file "global/pg_filenode.map": Permission denied'
+    with patch("rakkib.steps.postgres.docker_run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=2, stderr=stderr)
+
+        with pytest.raises(RuntimeError) as exc:
+            postgres._apply_sql("select 1;", data_root=tmp_path)
+
+    data_dir = tmp_path / "data" / "postgres" / "data"
+    message = str(exc.value)
+    assert str(data_dir) in message
+    assert "sudo chown -R 999:999" in message
+    assert "docker restart postgres" in message
