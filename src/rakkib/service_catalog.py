@@ -205,6 +205,16 @@ def deployed_service_urls(
         svc_id = svc.get("id")
         if not isinstance(svc_id, str) or svc_id not in active_ids:
             continue
+        if svc_id == "openclaw":
+            special_url = str(state.get("deployed.special_urls.openclaw") or "").strip()
+            if not special_url:
+                continue
+            rows.append({
+                "service": svc_id,
+                "label": str(svc.get("name") or (svc.get("homepage") or {}).get("name") or svc_id),
+                "url": special_url,
+            })
+            continue
         url = service_url(state, svc, lan_ip=lan_ip)
         if not url:
             continue

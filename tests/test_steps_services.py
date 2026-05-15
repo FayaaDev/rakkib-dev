@@ -820,6 +820,26 @@ class TestSpecialHandlers:
             "http://localhost:18789",
         ]
 
+    @patch("rakkib.hooks.services._openclaw_wait_for_pairing")
+    @patch("rakkib.hooks.services._openclaw_gateway_healthcheck", return_value=True)
+    @patch("rakkib.hooks.services._openclaw_dashboard_url", return_value="https://claw.example.com/?token=abc")
+    @patch("rakkib.hooks.services._resolve_openclaw_bin", return_value=Path("/home/admin/.local/bin/openclaw"))
+    @patch("rakkib.hooks.services._run_openclaw")
+    def test_openclaw_gateway_restart_records_special_deployed_url(
+        self,
+        mock_run_openclaw,
+        _mock_resolve_bin,
+        _mock_dashboard_url,
+        _mock_healthcheck,
+        _mock_wait_for_pairing,
+    ):
+        mock_run_openclaw.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        state = State({"admin_user": "admin"})
+
+        service_hooks.openclaw_gateway_restart(state, {}, Path("."), Path("."), Path("hook.log"), {})
+
+        assert state.get("deployed.special_urls.openclaw") == "https://claw.example.com/?token=abc"
+
     @patch("rakkib.hooks.services._run_as_user")
     @patch("rakkib.hooks.services._resolve_openclaw_bin_for_user")
     def test_migrate_root_openclaw_service_stops_and_uninstalls_root_service(self, mock_resolve_bin, mock_run_as_user):

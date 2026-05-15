@@ -861,6 +861,7 @@ def openclaw_gateway_restart(ctx: HookContext, *legacy_args) -> None:
 
     url = _openclaw_dashboard_url(ctx.state)
     if url:
+        ctx.state.set("deployed.special_urls.openclaw", url)
         console.print(f"[green]  OpenClaw ready:[/green] {url}")
 
     _openclaw_wait_for_pairing(ctx.state, openclaw_bin)

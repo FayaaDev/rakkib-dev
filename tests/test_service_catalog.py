@@ -92,6 +92,35 @@ def test_deployed_service_urls_keep_registry_order_for_internal_mode():
     ]
 
 
+def test_deployed_service_urls_use_openclaw_special_url_only():
+    registry = {
+        "services": [
+            {"id": "homepage", "default_subdomain": "home"},
+            {"id": "openclaw", "default_subdomain": "claw", "homepage": {"name": "OpenClaw"}},
+        ]
+    }
+    state = State({
+        "domain": "example.com",
+        "foundation_services": ["homepage"],
+        "selected_services": ["openclaw"],
+        "deployed": {"special_urls": {"openclaw": "https://claw.example.com/?token=abc"}},
+    })
+
+    rows = deployed_service_urls(state, registry)
+
+    assert rows == [
+        {"service": "homepage", "label": "homepage", "url": "https://home.example.com/"},
+        {"service": "openclaw", "label": "OpenClaw", "url": "https://claw.example.com/?token=abc"},
+    ]
+
+
+def test_deployed_service_urls_omit_openclaw_without_special_url():
+    registry = {"services": [{"id": "openclaw", "default_subdomain": "claw"}]}
+    state = State({"domain": "example.com", "selected_services": ["openclaw"]})
+
+    assert deployed_service_urls(state, registry) == []
+
+
 def test_registry_internal_access_rejects_duplicate_ports():
     registry = {
         "services": [
