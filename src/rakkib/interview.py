@@ -61,7 +61,7 @@ def run_interview(state: State, questions_dir: Path | str = "questions") -> Stat
         if overwrite:
             state = State({}, path=state.path)
 
-    resume = state.resume_phase()
+    resume = 1 if state.has("confirmed") and not state.is_confirmed() else state.resume_phase()
     for schema in schemas:
         if schema.phase < resume:
             continue
@@ -163,6 +163,10 @@ def _handle_service_catalog(schema: QuestionSchema, state: State) -> None:
     host_items = catalog.get("host_addons", [])
     registry = load_service_registry()
     by_id = {svc["id"]: svc for svc in registry.get("services", [])}
+    prior_foundation = set(state.get("foundation_services", []) or [])
+    prior_selected = set(state.get("selected_services", []) or [])
+    prior_host_addons = set(state.get("host_addons", []) or [])
+    has_prior_selection = bool(prior_foundation or prior_selected or prior_host_addons)
 
     choices: list[Choice] = []
 
@@ -178,7 +182,8 @@ def _handle_service_catalog(schema: QuestionSchema, state: State) -> None:
             slug = item["slug"]
             label = item.get("label", slug)
             svc = by_id.get(slug, {"id": slug})
-            choices.append(Choice(title=f"  {append_service_suffixes(label, svc)}", value=slug, checked=True))
+            is_checked = slug in prior_foundation if has_prior_selection else True
+            choices.append(Choice(title=f"  {append_service_suffixes(label, svc)}", value=slug, checked=is_checked))
 
     optional_groups: dict[str, list[dict[str, Any]]] = {}
     for item in optional_items:
@@ -198,7 +203,7 @@ def _handle_service_catalog(schema: QuestionSchema, state: State) -> None:
             slug = item["slug"]
             label = item.get("label", slug)
             svc = by_id.get(slug, {"id": slug})
-            choices.append(Choice(title=f"  {append_service_suffixes(label, svc)}", value=slug, checked=False))
+            choices.append(Choice(title=f"  {append_service_suffixes(label, svc)}", value=slug, checked=slug in prior_selected))
 
     if host_items:
         choices.append(Choice(title="━━ Host Addons ━━", value="__header_host__", disabled=True))
@@ -206,7 +211,7 @@ def _handle_service_catalog(schema: QuestionSchema, state: State) -> None:
             slug = item["slug"]
             label = item.get("label", slug)
             svc = by_id.get(slug, {"id": slug})
-            choices.append(Choice(title=f"  {append_service_suffixes(label, svc)}", value=slug, checked=False))
+            choices.append(Choice(title=f"  {append_service_suffixes(label, svc)}", value=slug, checked=slug in prior_host_addons))
 
     console.print("\n[bold]=== Service Selection ===[/bold]\n")
 
@@ -275,6 +280,10 @@ def _prompt_selected_service_subdomains(state: State, registry: dict[str, Any], 
 
 def _handle_derived(field: FieldDef, state: State) -> None:
     """Handle derived field types."""
+    if field.derived_value:
+        _record_dict(_render_template_dict(field.derived_value, state), state)
+        return
+
     if field.detect:
         result = _run_detect(field, state)
         if isinstance(result, dict):
@@ -385,7 +394,7 @@ def _extract_template_keys(template: str) -> list[str]:
 
 def _prompt_text(field: FieldDef, state: State) -> str:
     """Prompt for text input with validation."""
-    default = _get_default(field, state)
+    default = _get_prompt_default(field, state)
     prompt = field.prompt
 
     while True:
@@ -406,7 +415,7 @@ def _prompt_confirm(field: FieldDef, state: State) -> Any:
     For non-boolean mappings (y/n → generate/manual), uses questionary.select.
     """
     prompt = field.prompt
-    default = field.default
+    default = _get_prompt_default(field, state)
 
     if field.accepted_inputs:
         values = set(field.accepted_inputs.values())
@@ -416,8 +425,12 @@ def _prompt_confirm(field: FieldDef, state: State) -> Any:
         else:
             choices = [str(k) for k in field.accepted_inputs.keys()]
             values_map = {str(k): v for k, v in field.accepted_inputs.items()}
+            default_choice = next(
+                (key for key, value in values_map.items() if value == default),
+                None,
+            )
             while True:
-                result = prompt_select(prompt, choices=choices)
+                result = prompt_select(prompt, choices=choices, default=default_choice)
                 if result is None:
                     if default is not None:
                         return default
@@ -435,6 +448,7 @@ def _prompt_single_select(field: FieldDef, state: State) -> str:
     """Prompt for single select using questionary.select."""
     prompt = field.prompt
     values = field.canonical_values
+    default = _get_prompt_default(field, state)
 
     choices = []
     for canonical in values:
@@ -447,7 +461,8 @@ def _prompt_single_select(field: FieldDef, state: State) -> str:
             title = canonical
         choices.append(Choice(title=title, value=canonical))
 
-    result = prompt_select(prompt, choices=choices)
+    default_choice = default if isinstance(default, str) and default in values else None
+    result = prompt_select(prompt, choices=choices, default=default_choice)
     if result is not None:
         return result
 
@@ -468,7 +483,9 @@ def _prompt_multi_select(field: FieldDef, state: State) -> list[str]:
     """Prompt for multi-select using questionary.checkbox."""
     prompt = field.prompt
     selection_mode = getattr(field, "selection_mode", "") or ""
-    default = field.default if field.default is not None else []
+    default = _get_prompt_default(field, state)
+    if default is None:
+        default = field.default if field.default is not None else []
     if not isinstance(default, list):
         default = []
 
@@ -555,6 +572,21 @@ def _handle_repeat(
         state.set(subdomain_placeholder_key(slug), default)
 
 
+def _build_subdomain_defaults(items: list[dict[str, Any]], state: State) -> None:
+    """Populate default subdomains for currently selected services only."""
+    selected_ids = set(state.get("foundation_services", []) or []) | set(
+        state.get("selected_services", []) or []
+    )
+
+    for item in items:
+        slug = str(item.get("slug") or "")
+        if not slug or slug not in selected_ids:
+            continue
+        default = normalize_subdomain(item.get("default_subdomain") or slug)
+        state.set(f"subdomains.{slug}", default)
+        state.set(subdomain_placeholder_key(slug), default)
+
+
 # ---------------------------------------------------------------------------
 # Rules enforcement
 # ---------------------------------------------------------------------------
@@ -635,6 +667,24 @@ def _get_default(field: FieldDef, state: State) -> Any:
                 return ""
 
     return field.default
+
+
+def _get_prompt_default(field: FieldDef, state: State) -> Any:
+    """Return an existing answer when present, otherwise fall back to schema defaults."""
+    current = _get_recorded_value(field, state)
+    if current is not None:
+        return current
+    return _get_default(field, state)
+
+
+def _get_recorded_value(field: FieldDef, state: State) -> Any:
+    """Return the first recorded state value for a field, if one exists."""
+    for key in field.records:
+        if state.has(key):
+            return state.get(key)
+    if state.has(field.id):
+        return state.get(field.id)
+    return None
 
 
 def _validate(answer: str, field: FieldDef) -> bool:
