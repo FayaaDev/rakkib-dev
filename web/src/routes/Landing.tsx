@@ -5,6 +5,7 @@ import type { PublicService } from '../api/types'
 import { LanguageToggle } from '../components/LanguageToggle'
 import { Marquee } from '../components/MagicMarquee'
 import { ServiceMark } from '../components/ServiceMark'
+import { SmoothCursor } from '../components/SmoothCursor'
 import { useI18n } from '../i18n/useI18n'
 import { SetupBridge } from './SetupBridge'
 
@@ -121,10 +122,14 @@ function ServicesMarquee3D({
 }) {
   const columns = distributeServices(services, 4)
   const shouldRepeat = services.length > 6
+  const densityClass = services.length <= 2 ? ' is-sparse' : shouldRepeat ? '' : ' is-static'
 
   return (
-    <div className="services-marquee-3d" aria-label="Animated service catalog">
-      <div className="services-marquee-tilt">
+    <div className={`services-marquee-3d${densityClass}`} aria-label="Animated service catalog">
+      <div
+        className="services-marquee-tilt"
+        style={{ '--service-column-count': columns.length } as CSSProperties}
+      >
         {columns.map((column, index) => (
           <Marquee
             key={index}
@@ -261,6 +266,7 @@ export function Landing() {
 
   return (
     <div className="shell marketing-shell">
+      <SmoothCursor />
       <header className="site-header">
         <a className="brand" href="#top" aria-label={t('brandLabel')}>
           <img className="brand-logo" src="/logo.png" alt="Rakkib logo" width="28" height="28" />
@@ -355,10 +361,10 @@ export function Landing() {
             )
             const activeCategory = serviceCategories.some(([category]) => category === selectedCategory)
               ? selectedCategory
-              : serviceCategories[0]?.[0] ?? null
+              : null
             const activeCategoryItems = activeCategory
               ? serviceCategories.find(([category]) => category === activeCategory)?.[1] ?? []
-              : []
+              : filteredItems
 
             return (
               <div className="catalog-showcase">
@@ -385,44 +391,44 @@ export function Landing() {
                 </article>
 
                 {serviceCategories.length > 0 ? (
-                  <div className="catalog-interactive-stage">
+                  <>
                     <div className="catalog-category-rail" aria-label={t('categoriesLabel')}>
-                      <div className={`catalog-category-track${serviceCategories.length > 5 ? ' is-moving' : ''}`}>
-                        {serviceCategories.map(([category, items]) => (
-                          <button
-                            className={`catalog-category-chip${category === activeCategory ? ' is-active' : ''}`}
-                            type="button"
-                            key={category}
-                            aria-pressed={category === activeCategory}
-                            onClick={() => setSelectedCategory(category)}
-                          >
-                            <strong>{tc(category)}</strong>
-                            <span>{tf(items.length === 1 ? 'serviceCountOne' : 'serviceCountMany', { count: items.length })}</span>
-                          </button>
+                      {serviceCategories.map(([category, items]) => (
+                        <button
+                          className={`catalog-category-chip${category === activeCategory ? ' is-active' : ''}`}
+                          type="button"
+                          key={category}
+                          aria-pressed={category === activeCategory}
+                          onClick={() => setSelectedCategory((current) => (current === category ? null : category))}
+                        >
+                          <strong>{tc(category)}</strong>
+                          <span>{tf(items.length === 1 ? 'serviceCountOne' : 'serviceCountMany', { count: items.length })}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="catalog-interactive-stage">
+                      <ServicesMarquee3D
+                        services={activeCategoryItems}
+                        subdomainSuffix={subdomainSuffix}
+                        ts={ts}
+                        tc={tc}
+                        detailLabels={detailLabels}
+                      />
+                      <div className="catalog-mobile-list" role="list">
+                        {activeCategoryItems.map((item) => (
+                          <ServiceCatalogCard
+                            key={item.id}
+                            item={item}
+                            subdomainSuffix={subdomainSuffix}
+                            ts={ts}
+                            tc={tc}
+                            detailLabels={detailLabels}
+                          />
                         ))}
                       </div>
                     </div>
-
-                    <ServicesMarquee3D
-                      services={activeCategoryItems}
-                      subdomainSuffix={subdomainSuffix}
-                      ts={ts}
-                      tc={tc}
-                      detailLabels={detailLabels}
-                    />
-                    <div className="catalog-mobile-list" role="list">
-                      {activeCategoryItems.map((item) => (
-                        <ServiceCatalogCard
-                          key={item.id}
-                          item={item}
-                          subdomainSuffix={subdomainSuffix}
-                          ts={ts}
-                          tc={tc}
-                          detailLabels={detailLabels}
-                        />
-                      ))}
-                    </div>
-                  </div>
+                  </>
                 ) : (
                   <article className="setup-service-section setup-service-empty catalog-empty">
                     <p className="section-label">{t('noMatchesLabel')}</p>
