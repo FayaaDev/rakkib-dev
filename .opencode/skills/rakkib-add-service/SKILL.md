@@ -10,7 +10,7 @@ metadata:
 
 ## Goal
 
-Service is complete only when it works cleanly with `rakkib init`, `rakkib pull`, `rakkib pull --service <id>`, `rakkib add <id> --yes`, checkbox `rakkib add`, `rakkib sync-services`, `rakkib remove <id> --yes`, `rakkib smoke <id>`, and the Phase 3 interview catalog (`src/rakkib/data/questions/03-services.md`). If the service declares restart hooks or render drift matters, it must also work with `rakkib restart <id>`. Do not add hardcoded `if svc_id == ...` branches unless behavior cannot be expressed declaratively.
+Service is complete only when it works cleanly with installer-first deployment, `rakkib add <id> --yes`, checkbox `rakkib add`, `rakkib sync-services`, `rakkib remove <id> --yes`, `rakkib smoke <id>`, and the Phase 3 interview catalog (`src/rakkib/data/questions/03-services.md`). The targeted `rakkib pull --service <id>` path must remain compatible when service code changes affect it, but normal new-service validation uses the service-targeted add/remove flow, not a full pull. If the service declares restart hooks or render drift matters, it must also work with `rakkib restart <id>`. Do not add hardcoded `if svc_id == ...` branches unless behavior cannot be expressed declaratively.
 
 ## Read First
 
@@ -19,7 +19,9 @@ Service is complete only when it works cleanly with `rakkib init`, `rakkib pull`
 - `src/rakkib/steps/services.py` & `steps/postgres.py`
 - `src/rakkib/hooks/services.py`
 - `src/rakkib/render.py` & `cli.py`
+- `src/rakkib/services_cli.py` & `service_catalog.py`
 - `tests/test_registry_consistency.py` & `test_phase3b_output_snapshot.py`
+- `tests/test_service_catalog.py`, `test_steps_services.py`, `test_cli.py`, and `test_service_resource_requirements.py`
 - `tests/fixtures/sample_state.yaml`
 - `AGENTS.md`
 
@@ -30,6 +32,8 @@ Service is complete only when it works cleanly with `rakkib init`, `rakkib pull`
 - internal exposure support: direct LAN `internal_access.host_port`, `container_port`, optional `scheme`, `path`, and `compose_service`
 - dependencies, env keys, generated secrets
 - shared Postgres? monitoring? Homepage metadata?
+- homepage category, description, icon, and whether the service should show resource warning suffixes
+- minimum/recommended RAM or disk requirements, if the service is resource-heavy
 - persistent `data_dirs` + chown? extra templates? custom hooks?
 - public or auth-switchable Caddy route?
 - does any hook run host package-manager commands (`apt`, `curl | bash`, etc.)?
@@ -55,6 +59,7 @@ Target is bare metal — avoid host tooling assumptions; do not test on the curr
 - `rakkib sync-services` applies the currently saved selection without a full pull. The web deployment flow uses this command for service selection changes.
 - Full `rakkib pull` is whole-server validation. It skips selected services already installed and running, but still runs global setup and can expose unrelated state on a reused test server.
 - Restart uses the deployed snapshots, not just the current selected state. Keep deployed state accurate after pull/add/remove flows.
+- `rakkib web` applies browser service selections through `rakkib sync-services`; service additions must not rely on a full pull-only side effect.
 
 ### Host Installer Safety
 
@@ -76,7 +81,7 @@ Needed for Docker services:
 Needed for browser or host HTTP services in Cloudflare exposure mode:
 - `src/rakkib/data/templates/caddy/routes/<id>.caddy.tmpl` or `<id>-public.caddy.tmpl`
 
-Add only when required: `internal_access`, `extra_templates`, `hooks`, `postgres`, `homepage`, `data_dirs`, `chown`, `env_preserve_keys`, `conditional_secrets`, `installed_check`, `health_timeout`, `smoke`
+Add only when required: `internal_access`, `extra_templates`, `hooks`, `postgres`, `homepage`, `monitoring`, `resource_requirements`, `data_dirs`, `chown`, `env_preserve_keys`, `conditional_secrets`, `installed_check`, `health_timeout`, `smoke`
 
 ## Template Safety
 
@@ -93,7 +98,7 @@ Add only when required: `internal_access`, `extra_templates`, `hooks`, `postgres
 
 ## Registry Fields Checklist
 
-`id` · `state_bucket` · `required`/`optional` · `foundation` (explicit bool for foundation services) · `image` · `container_name` · `default_port` · `host_service` · `host_port` · `installed_check` · `health_timeout` · `default_subdomain` · `subdomain_key` · `subdomain_placeholder` · `depends_on` · `internal_access` (`enabled`, `host_port`, `container_port`, optional `scheme`, `path`, `compose_service`) · `caddy` (`template`, `public_template`) · `env_keys` · `secrets` · `conditional_secrets` · `postgres` · `monitoring` (`enabled`, `type`, `target`, `path`, `port`, `interval`, `timeout`, `retries`, `hostname`, `custom_url`, `name`) · `homepage` · `data_dirs` · `chown` · `extra_templates` · `hooks` (`post_render`, `pre_start`, `post_start`, `restart`, `remove`) · `env_preserve_keys` · `smoke` (`path`, `expected_text`, optional `timeout`) · `notes`
+`id` · `state_bucket` · `required`/`optional` · `foundation` (explicit bool for foundation services) · `image` · `container_name` · `default_port` · `host_service` · `host_port` · `installed_check` · `health_timeout` · `default_subdomain` · `subdomain_key` · `subdomain_placeholder` · `depends_on` · `internal_access` (`enabled`, `host_port`, `container_port`, optional `scheme`, `path`, `compose_service`) · `caddy` (`template`, `public_template`) · `env_keys` · `secrets` · `conditional_secrets` · `postgres` · `monitoring` (`enabled`, `type`, `target`, `path`, `port`, `interval`, `timeout`, `retries`, `hostname`, `custom_url`, `public_url`, `name`) · `homepage` (`name`, `description`, `category`, `icon`) · `resource_requirements` (`min_ram_mb`, `recommended_ram_mb`, `min_disk_gb`, `recommended_disk_gb`, `install_warning`) · `data_dirs` · `chown` · `extra_templates` · `hooks` (`post_render`, `pre_start`, `post_start`, `restart`, `remove`) · `env_preserve_keys` · `smoke` (`path`, `expected_text`, optional `timeout`) · `notes`
 
 ### Registry Risk Rules
 
@@ -110,17 +115,21 @@ Add only when required: `internal_access`, `extra_templates`, `hooks`, `postgres
 
 Validate one new service at a time. Use non-interactive commands whenever possible:
 
-1. Install/update the test server from the public runtime repo. For development-tree validation, publish private `main` first with `scripts/publish-runtime-repo.sh sync --push`.
-2. Run `rakkib init` when state is missing or intentionally reset.
-3. Deploy only the target service with `rakkib pull --service <id>` or `rakkib add <id> --yes`.
-4. Confirm the container/host service is running.
-5. For `exposure_mode: internal`, confirm no Caddy route is rendered, the service compose publishes the registry-declared direct LAN port, and `rakkib smoke <id>` uses the LAN URL.
-6. For `exposure_mode: cloudflare`, confirm the Caddy route is rendered, Cloudflare publishing runs when configured, and `rakkib smoke <id>` uses the public HTTPS URL.
-7. Run `rakkib smoke <id>` and verify the target URL returns the expected app HTML.
-8. Run `rakkib remove <id> --yes` and confirm cleanup updates state and removes rendered/data/Postgres artifacts declared for that service.
-9. Re-add with `rakkib add <id> --yes` to confirm removal did not leave stale state that breaks redeploy.
-10. If the service declares restart hooks or render-sensitive artifacts, run `rakkib restart <id>`.
-11. Only then move to the next service.
+1. Commit and push private `main`, then publish the public runtime repo with `scripts/publish-runtime-repo.sh sync --push` before test-server validation when runtime files changed.
+2. Delegate validation to exactly one of `RakkibTester1`, `RakkibTester2`, or `RakkibTester3`. Tester agents validate only: they must not edit source files, update approval docs, close beads, commit, or push.
+3. Install/update the test server from the public runtime repo with `curl -fsSL https://install.rakkib.app | bash`.
+4. Deploy only the target service with `rakkib add <id> --yes` or `rakkib add --service <id> --yes`.
+5. Do not run `rakkib init` or full `rakkib pull` for normal new-service validation. Reserve full pull for explicit whole-server validation.
+6. If checking targeted pull compatibility, run `rakkib pull --service <id>` as a separate targeted check after the installer/add path is understood.
+7. Confirm the container/host service is running and inspect service logs before marking smoke as meaningful.
+8. For `exposure_mode: internal`, confirm no Caddy route is rendered, the service compose publishes the registry-declared direct LAN port, and `rakkib smoke <id>` uses the LAN URL.
+9. For `exposure_mode: cloudflare`, confirm the Caddy route is rendered, Cloudflare publishing runs when configured, and `rakkib smoke <id>` uses the public HTTPS URL.
+10. Run `rakkib smoke <id>` and verify the target URL returns the expected app HTML.
+11. Run `rakkib remove <id> --yes` and confirm cleanup updates state and removes rendered/data/Postgres artifacts declared for that service.
+12. Re-add with `rakkib add <id> --yes` to confirm removal did not leave stale state that breaks redeploy.
+13. If the service declares restart hooks or render-sensitive artifacts, run `rakkib restart <id>`.
+14. Run `rakkib remove <id> --yes` again after successful validation so the service is not left running on the test server.
+15. Stop if the tester reports high load, memory pressure, swap exhaustion, another active validation, or a failing command. Document the blocker instead of marking the service complete.
 
 Avoid full `rakkib pull` during service-by-service testing unless intentionally validating the whole selected server. Full pull skips already-running selected services, but it still runs global setup and can expose unrelated state on a reused test server.
 
@@ -130,6 +139,7 @@ Avoid full `rakkib pull` during service-by-service testing unless intentionally 
 - Update `fields.optional_services` or `fields.foundation_services`
 - Update "Present This Menu" checklist text
 - Update `subdomains:` example and placeholder mapping list
+- Use registry `homepage.category` for picker grouping in CLI/web where applicable
 - Describe host-backed services accurately (not as containerized)
 
 ## Verification Checklist
@@ -153,9 +163,10 @@ Avoid full `rakkib pull` during service-by-service testing unless intentionally 
 17. Update fixture/snapshot expectations if rendered outputs change materially
 18. Declare `smoke.path` and `smoke.expected_text` for browser-facing services so `rakkib smoke <id>` can verify the target page with a GET request in both Cloudflare and internal mode when supported
 19. For app+volume containers, inspect the image runtime user and add registry `chown` for writable persistent directories when needed
-20. Use `rakkib add <id> --yes` for non-interactive add-path validation, then verify deselection/removal through checkbox `rakkib add` and/or `rakkib remove <id> --yes`
-21. After successful pull/add/remove, confirm deployed snapshots match the actual deployed service set
-22. If `install.sh`, `pyproject.toml`, `LICENSE`, `docs/public/README.md`, or `src/rakkib/**` changed, publish the public runtime repo only through `scripts/publish-runtime-repo.sh sync --push` after private `main` changes are ready; never hand-edit `FayaaDev/rakkib`
+20. Add `resource_requirements` for heavy services so CLI/web pickers warn users and deploy blocks hosts below minimum requirements
+21. Use `rakkib add <id> --yes` for non-interactive add-path validation, then verify deselection/removal through checkbox `rakkib add` and/or `rakkib remove <id> --yes`
+22. After successful add/remove/re-add/remove, confirm deployed snapshots match the actual deployed service set
+23. If `install.sh`, `pyproject.toml`, `LICENSE`, `docs/public/README.md`, or `src/rakkib/**` changed, publish the public runtime repo only through `scripts/publish-runtime-repo.sh sync --push` after private `main` changes are ready; never hand-edit `FayaaDev/rakkib`
 
 ## Done When
 
