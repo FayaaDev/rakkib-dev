@@ -27,6 +27,12 @@ rakkib pull
 rakkib update
 ```
 
+## Demo
+
+Watch the setup demo from the public release page:
+
+https://github.com/FayaaDev/rakkib/releases/tag/Demo
+
 ## Requirements
 
 - Ubuntu 24.04 is the tested production deployment target.
