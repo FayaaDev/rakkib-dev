@@ -9,13 +9,17 @@ Dont debug and run tests on current machine, the app is being tested on a bare m
 Solo one-line command:
 curl -fsSL https://install.rakkib.app | bash
 
-## Runtime repository
+## GitHub Runtime Publishing
 
-- `main` in `FayaaDev/rakkib-dev` is the private development branch.
-- `FayaaDev/rakkib` is the public runtime repository. Its `main` branch is generated and contains only `.gitignore`, `README.md`, `LICENSE`, `install.sh`, `pyproject.toml`, and `src/rakkib/**`.
-- The installer defaults to cloning `https://github.com/FayaaDev/rakkib.git` branch `main`.
-- **All development commits go to private `main`. Never hand-edit the public runtime repository.** It only receives generated snapshots from `scripts/publish-runtime-repo.sh`.
-- When `install.sh`, `pyproject.toml`, `LICENSE`, `docs/public/README.md`, or `src/rakkib/**` changes on private `main`, publish the public runtime repo with `scripts/publish-runtime-repo.sh sync --push`.
+- Private development repository: `FayaaDev/rakkib-dev`, branch `main`. Local `origin` must point to `git@github.com:FayaaDev/rakkib-dev.git`.
+- Public runtime repository: `FayaaDev/rakkib`, branch `main`. Local `public` should point to `git@github.com:FayaaDev/rakkib.git`.
+- The public runtime repo is generated only. Never hand-edit it, never develop there, and do not recreate the old same-repo `runtime` branch workflow.
+- Public runtime contents are allowlisted to `.gitignore`, `README.md`, `LICENSE`, `install.sh`, `pyproject.toml`, and `src/rakkib/**`. Public `README.md` comes from `docs/public/README.md`.
+- `install.sh` and `https://install.rakkib.app` default to cloning `https://github.com/FayaaDev/rakkib.git` branch `main`. The installer migrates old `FayaaDev/Rakkib` origins to the public runtime repo.
+- Normal release order: validate locally, commit to private `main`, push `origin main`, run `scripts/publish-runtime-repo.sh sync --push`, then validate the public installer on the test server.
+- When `install.sh`, `pyproject.toml`, `LICENSE`, `docs/public/README.md`, or `src/rakkib/**` changes, publish `FayaaDev/rakkib` before installer-first or service validation because `curl -fsSL https://install.rakkib.app | bash` installs from the public repo.
+- Use `scripts/publish-runtime-repo.sh sync` for a preview, `scripts/publish-runtime-repo.sh sync --push` to publish, and `scripts/publish-runtime-repo.sh verify --public-dir <path>` to verify a public checkout.
+- Public runtime commits must preserve source traceability: `Publish runtime from <short-sha>` with `Source: FayaaDev/rakkib-dev@<full-sha>` in the commit body.
 - Use `RAKKIB_REPO=git@github.com:FayaaDev/rakkib-dev.git RAKKIB_BRANCH=main` only when intentionally installing the full private development tree.
 
 ## Guidelines
