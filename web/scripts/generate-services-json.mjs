@@ -11,8 +11,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 function fallbackCategory(svc) {
-  if (svc.required || String(svc.state_bucket || '').trim() === 'always') return 'Core'
-  if (svc.foundation) return 'Foundation'
+  if (svc.required || String(svc.state_bucket || '').trim() === 'always' || svc.foundation) return 'Infrastructure'
   if (svc.host_service) return 'Host Add-ons'
   return 'Other'
 }
@@ -45,6 +44,15 @@ function serviceSortKey(svc) {
   if (svc.category === 'AI' && svc.id === 'openclaw') return 'OpenClaw\u0000a'
   if (svc.category === 'AI' && svc.id === 'hermes-agent') return 'OpenClaw\u0000b'
   return `${svc.name}\u0000${svc.id}`
+}
+
+function categorySortKey(category) {
+  const priority = {
+    AI: '00',
+    Infrastructure: '01',
+  }
+
+  return `${priority[category] ?? '99'}\u0000${category}`
 }
 
 function parseArgs(argv) {
@@ -134,8 +142,8 @@ async function main() {
       .map(normalizeService)
       .filter((svc) => svc.id)
       .sort((a, b) => {
-        const keyA = `${a.category}\u0000${serviceSortKey(a)}`
-        const keyB = `${b.category}\u0000${serviceSortKey(b)}`
+        const keyA = `${categorySortKey(a.category)}\u0000${serviceSortKey(a)}`
+        const keyB = `${categorySortKey(b.category)}\u0000${serviceSortKey(b)}`
         return keyA.localeCompare(keyB)
       }),
   }

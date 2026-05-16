@@ -69,6 +69,36 @@ function GitHubIcon() {
   )
 }
 
+function CategoryIcon({ category }: { category: string }) {
+  const paths: Record<string, string[]> = {
+    AI: ['M12 3v3', 'M12 18v3', 'M3 12h3', 'M18 12h3', 'M7.8 7.8l2.1 2.1', 'M14.1 14.1l2.1 2.1', 'M16.2 7.8l-2.1 2.1', 'M9.9 14.1l-2.1 2.1', 'M9 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0Z'],
+    Automation: ['M5 7h7a4 4 0 0 1 4 4v1', 'M13 9l3 3 3-3', 'M19 17h-7a4 4 0 0 1-4-4v-1', 'M11 15l-3-3-3 3'],
+    Books: ['M5 5.5A2.5 2.5 0 0 1 7.5 3H19v16H7.5A2.5 2.5 0 0 0 5 21.5v-16Z', 'M5 5.5A2.5 2.5 0 0 1 7.5 8H19', 'M9 12h6'],
+    Dashboards: ['M4 5h7v6H4z', 'M13 5h7v4h-7z', 'M13 11h7v8h-7z', 'M4 13h7v6H4z'],
+    'Developer Tools': ['M8 8l-4 4 4 4', 'M16 8l4 4-4 4', 'M14 5l-4 14'],
+    'Diagram And Design': ['M5 5h5v5H5z', 'M14 14h5v5h-5z', 'M10 8h4', 'M16 10v4', 'M6 16l4-4'],
+    Documents: ['M7 3h7l5 5v13H7z', 'M14 3v5h5', 'M10 13h6', 'M10 17h4'],
+    'File Sharing': ['M12 4v10', 'M8 8l4-4 4 4', 'M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4'],
+    Finance: ['M4 19h16', 'M7 16v-4', 'M12 16V8', 'M17 16v-7', 'M6 8l4-3 4 2 4-4'],
+    'Home Automation': ['M4 11l8-7 8 7', 'M6 10v10h12V10', 'M10 20v-6h4v6', 'M15.5 8.5a2.5 2.5 0 0 1 0 5'],
+    Infrastructure: ['M5 18h14', 'M7 18V8h10v10', 'M9 8V5h6v3', 'M9 12h2', 'M13 12h2', 'M9 15h2', 'M13 15h2'],
+    Lifestyle: ['M5 19c8 0 13-5 14-14-9 1-14 6-14 14Z', 'M5 19c0-5 4-9 9-9'],
+    Media: ['M7 5v14l12-7z'],
+    Monitoring: ['M3 13h4l2-5 4 10 2-5h6'],
+    News: ['M5 5h14v14H5z', 'M8 9h8', 'M8 13h8', 'M8 17h5'],
+    Personal: ['M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z', 'M4 21a8 8 0 0 1 16 0'],
+    Utility: ['M14.7 6.3a4 4 0 0 0 3 5.8L11 18.8 7.2 15l6.7-6.7a4 4 0 0 0 .8-2Z', 'M5 17l2 2'],
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none">
+      {(paths[category] ?? paths.Infrastructure).map((path) => (
+        <path key={path} d={path} />
+      ))}
+    </svg>
+  )
+}
+
 function distributeServices(items: PublicServiceItem[], columnCount: number) {
   const safeColumnCount = Math.max(1, Math.min(columnCount, Math.max(items.length, 1)))
   const columns = Array.from({ length: safeColumnCount }, () => [] as PublicServiceItem[])
@@ -100,7 +130,7 @@ function ServiceCatalogCard({
         <span>{serviceDetail(item, ts, detailLabels)}</span>
       </span>
       <span className="catalog-service-meta">
-        <span>{tc(item.category?.trim() || 'Other')}</span>
+        <span>{tc(item.category?.trim() || 'Infrastructure')}</span>
         {serviceSubdomain ? <span dir="ltr">{serviceSubdomain}</span> : null}
       </span>
     </article>
@@ -351,7 +381,7 @@ export function Landing() {
 
             const serviceCategories = Array.from(
               filteredItems.reduce((groups, item) => {
-                const category = item.category?.trim() || 'Other'
+                const category = item.category?.trim() || 'Infrastructure'
                 groups.set(category, [...(groups.get(category) ?? []), item])
                 return groups
               }, new Map<string, PublicServiceItem[]>()),
@@ -389,17 +419,22 @@ export function Landing() {
 
                 {serviceCategories.length > 0 ? (
                   <>
-                    <div className="catalog-category-rail" aria-label={t('categoriesLabel')}>
+                    <div className="catalog-category-dock" aria-label={t('categoriesLabel')}>
                       {serviceCategories.map(([category, items]) => (
                         <button
-                          className={`catalog-category-chip${category === activeCategory ? ' is-active' : ''}`}
+                          className={`catalog-category-dock-item${category === activeCategory ? ' is-active' : ''}`}
                           type="button"
                           key={category}
                           aria-pressed={category === activeCategory}
                           onClick={() => setSelectedCategory((current) => (current === category ? null : category))}
                         >
+                          <span className="catalog-category-dock-mark" aria-hidden="true">
+                            <CategoryIcon category={category} />
+                          </span>
                           <strong>{tc(category)}</strong>
-                          <span>{tf(items.length === 1 ? 'serviceCountOne' : 'serviceCountMany', { count: items.length })}</span>
+                          <span className="catalog-category-dock-count">
+                            {tf(items.length === 1 ? 'serviceCountOne' : 'serviceCountMany', { count: items.length })}
+                          </span>
                         </button>
                       ))}
                     </div>

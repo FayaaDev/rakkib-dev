@@ -52,6 +52,19 @@ def test_registry_data_dirs_cover_compose_data_mounts():
     assert missing == {}
 
 
+def test_selected_registry_services_have_catalog_categories():
+    repo = Path(__file__).resolve().parents[1] / "src" / "rakkib" / "data"
+    registry = yaml.safe_load((repo / "registry.yaml").read_text())
+    missing = [
+        svc["id"]
+        for svc in registry["services"]
+        if svc.get("state_bucket") == "selected_services"
+        and not str((svc.get("homepage") or {}).get("category") or "").strip()
+    ]
+
+    assert missing == []
+
+
 @pytest.fixture
 def fake_repo(tmp_path: Path):
     """Create a minimal repo structure with registry and templates."""
