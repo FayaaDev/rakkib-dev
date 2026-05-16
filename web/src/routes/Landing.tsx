@@ -161,6 +161,7 @@ export function Landing() {
   const { t, tf, ts, tc } = useI18n()
   const [copied, setCopied] = useState(false)
   const [serviceSearch, setServiceSearch] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [servicesState, setServicesState] = useState<ServicesState>({ status: 'loading' })
 
   const subdomainSuffix = t('subdomainSuffix')
@@ -299,26 +300,13 @@ export function Landing() {
           </div>
 
           <div className="landing-hero-visual" aria-hidden="true">
-            <div className="hero-orbit hero-orbit-one" />
-            <div className="hero-orbit hero-orbit-two" />
-            <div className="hero-console-card">
+            <div className="hero-logo-stage">
               <img className="hero-logo" src="/logo-hero.png" alt="" width="240" height="240" />
-              <div className="hero-console-lines">
-                <span />
-                <span />
-                <span />
-              </div>
-              <div className="hero-metrics">
-                <span>{t('heroMetricAgent')}</span>
-                <span>{t('heroMetricServices')}</span>
-                <span>{t('heroMetricAccess')}</span>
-              </div>
             </div>
           </div>
         </section>
 
         <section id="demo" className="demo-showcase marketing-demo" aria-label="Rakkib demo">
-          <p className="section-label">{t('demoLabel')}</p>
           <div className="demo-frame">
             <video
               className="demo-video"
@@ -364,6 +352,12 @@ export function Landing() {
                 return groups
               }, new Map<string, PublicServiceItem[]>()),
             )
+            const activeCategory = serviceCategories.some(([category]) => category === selectedCategory)
+              ? selectedCategory
+              : serviceCategories[0]?.[0] ?? null
+            const activeCategoryItems = activeCategory
+              ? serviceCategories.find(([category]) => category === activeCategory)?.[1] ?? []
+              : []
 
             return (
               <div className="catalog-showcase">
@@ -389,26 +383,34 @@ export function Landing() {
                   </p>
                 </article>
 
-                <div className="catalog-category-rail" aria-label={t('categoriesLabel')}>
-                  {serviceCategories.map(([category, items]) => (
-                    <span className="catalog-category-chip" key={category}>
-                      <strong>{tc(category)}</strong>
-                      <span>{tf(items.length === 1 ? 'serviceCountOne' : 'serviceCountMany', { count: items.length })}</span>
-                    </span>
-                  ))}
-                </div>
-
                 {serviceCategories.length > 0 ? (
-                  <>
+                  <div className="catalog-interactive-stage">
+                    <div className="catalog-category-rail" aria-label={t('categoriesLabel')}>
+                      <div className={`catalog-category-track${serviceCategories.length > 5 ? ' is-moving' : ''}`}>
+                        {serviceCategories.map(([category, items]) => (
+                          <button
+                            className={`catalog-category-chip${category === activeCategory ? ' is-active' : ''}`}
+                            type="button"
+                            key={category}
+                            aria-pressed={category === activeCategory}
+                            onClick={() => setSelectedCategory(category)}
+                          >
+                            <strong>{tc(category)}</strong>
+                            <span>{tf(items.length === 1 ? 'serviceCountOne' : 'serviceCountMany', { count: items.length })}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     <ServicesMarquee3D
-                      services={filteredItems}
+                      services={activeCategoryItems}
                       subdomainSuffix={subdomainSuffix}
                       ts={ts}
                       tc={tc}
                       detailLabels={detailLabels}
                     />
                     <div className="catalog-mobile-list" role="list">
-                      {filteredItems.map((item) => (
+                      {activeCategoryItems.map((item) => (
                         <ServiceCatalogCard
                           key={item.id}
                           item={item}
@@ -419,7 +421,7 @@ export function Landing() {
                         />
                       ))}
                     </div>
-                  </>
+                  </div>
                 ) : (
                   <article className="setup-service-section setup-service-empty catalog-empty">
                     <p className="section-label">{t('noMatchesLabel')}</p>
