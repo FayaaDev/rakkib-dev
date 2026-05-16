@@ -40,6 +40,8 @@ class CheckResult:
 
 
 def _command_exists(cmd: str) -> bool:
+    if platform.system() == "Darwin":
+        _ensure_macos_tool_path()
     return shutil.which(cmd) is not None
 
 
