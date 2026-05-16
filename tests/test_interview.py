@@ -128,6 +128,39 @@ class TestRunInterview:
 
         assert mock_run_phase.call_count == 3
 
+    @patch("rakkib.host_platform.platform.system", return_value="Darwin")
+    @patch("rakkib.interview.load_all_schemas")
+    @patch("rakkib.interview._run_phase")
+    def test_detects_missing_platform_before_phase(self, mock_run_phase, mock_load, mock_platform):
+        schema1 = MagicMock(phase=1)
+        mock_load.return_value = [schema1]
+
+        state = State({})
+        with patch.object(state, "resume_phase", return_value=1):
+            run_interview(state)
+
+        assert state.get("platform") == "mac"
+        assert mock_run_phase.call_count == 1
+
+    @patch("rakkib.host_platform.platform.system", return_value="Darwin")
+    @patch("rakkib.interview.load_all_schemas")
+    @patch("rakkib.interview._run_phase")
+    def test_existing_platform_is_preserved(self, mock_run_phase, mock_load, mock_platform):
+        schema1 = MagicMock(phase=1)
+        mock_load.return_value = [schema1]
+
+        state = State({"platform": "linux"})
+        with patch.object(state, "resume_phase", return_value=1):
+            run_interview(state)
+
+        assert state.get("platform") == "linux"
+
+    @patch("rakkib.host_platform.platform.system", return_value="Windows")
+    @patch("rakkib.interview.load_all_schemas", return_value=[])
+    def test_unsupported_platform_fails_clearly(self, mock_load, mock_platform):
+        with pytest.raises(RuntimeError, match="Unsupported platform: Windows"):
+            run_interview(State({}))
+
     @patch("rakkib.interview.load_all_schemas")
     @patch("rakkib.interview.prompt_select", return_value=False)
     def test_final_confirmation_false_discards_state(self, mock_select, mock_load, tmp_path):
@@ -352,7 +385,8 @@ class TestHandleDerived:
         _handle_derived(field, empty_state)
         assert empty_state.get("lan_ip") == "192.168.1.10"
 
-    def test_value_platform_keyed(self, empty_state):
+    def test_value_platform_keyed(self, empty_state, monkeypatch):
+        monkeypatch.setenv("HOME", "/Users/tester")
         field = FieldDef(
             id="data_root",
             type="derived",
@@ -362,7 +396,7 @@ class TestHandleDerived:
         )
         empty_state.set("platform", "mac")
         _handle_derived(field, empty_state)
-        assert empty_state.get("data_root") == "$HOME/srv"
+        assert empty_state.get("data_root") == "/Users/tester/srv"
 
     def test_value_state_keyed(self, empty_state):
         field = FieldDef(

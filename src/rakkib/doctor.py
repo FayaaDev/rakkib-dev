@@ -14,6 +14,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import tarfile
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -40,7 +41,56 @@ class CheckResult:
 
 
 def _command_exists(cmd: str) -> bool:
+    if platform.system() == "Darwin":
+        _ensure_macos_tool_path()
     return shutil.which(cmd) is not None
+
+
+def _macos_brew_cmd() -> str | None:
+    brew = shutil.which("brew")
+    if brew:
+        return brew
+    for candidate in ("/opt/homebrew/bin/brew", "/usr/local/bin/brew"):
+        if Path(candidate).is_file():
+            return candidate
+    return None
+
+
+def _ensure_macos_tool_path() -> None:
+    if platform.system() != "Darwin":
+        return
+    entries = os.environ.get("PATH", "").split(os.pathsep)
+    for path in ("/opt/homebrew/bin", "/usr/local/bin"):
+        if Path(path).is_dir() and path not in entries:
+            entries.insert(0, path)
+    os.environ["PATH"] = os.pathsep.join(entry for entry in entries if entry)
+
+
+def _macos_tool_cmd(name: str) -> str | None:
+    _ensure_macos_tool_path()
+    tool = shutil.which(name)
+    if tool:
+        return tool
+    for prefix in ("/opt/homebrew/bin", "/usr/local/bin"):
+        candidate = Path(prefix) / name
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def attempt_start_colima() -> str:
+    """Start the Colima-backed Docker daemon on macOS."""
+    if platform.system() != "Darwin":
+        return "Colima is only used on macOS."
+    _ensure_macos_tool_path()
+    colima = _macos_tool_cmd("colima")
+    if colima is None:
+        return "Docker is not ready. Run `rakkib auth`, then try again."
+    result = subprocess.run([colima, "start"], capture_output=True, text=True)
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
+        return f"Colima failed to start: {detail}"
+    return "Docker started."
 
 
 APT_LOCK_PATHS = (
@@ -60,8 +110,12 @@ PACKAGE_MANAGER_SAFE_ENV = {
     "UCF_FORCE_CONFFOLD": "1",
 }
 
+MACOS_DOCKER_PACKAGES = ("colima", "docker", "docker-compose")
+
 CLOUDFLARED_VERSION = "2026.3.0"
 CLOUDFLARED_SHA256 = {
+    ("darwin", "amd64"): "0f30140c4a5e213d22f951ef4c964cac5fb6a5f061ba6eba5ea932999f7c0394",
+    ("darwin", "arm64"): "2aae4f69b0fc1c671b8353b4f594cbd902cd1e360c8eed2b8cad4602cb1546fb",
     ("linux", "amd64"): "4a9e50e6d6d798e90fcd01933151a90bf7edd99a0a55c28ad18f2e16263a5c30",
     ("linux", "arm64"): "0755ba4cbab59980e6148367fcf53a8f3ec85a97deefd63c2420cf7850769bee",
 }
@@ -356,10 +410,12 @@ def check_disk(data_root: str) -> CheckResult:
 
 def check_docker() -> CheckResult:
     if not _command_exists("docker"):
+        if platform.system() == "Darwin":
+            return CheckResult("docker", "fail", True, "Docker is missing; run `rakkib auth`.")
         return CheckResult("docker", "fail", True, "docker command is missing")
     try:
         docker_run(["info"])
-        return CheckResult("docker", "ok", True, "daemon is reachable")
+        return CheckResult("docker", "ok", True, "Docker is ready")
     except DockerError as exc:
         return CheckResult("docker", "fail", True, str(exc))
 
@@ -369,6 +425,13 @@ def docker_access_user(state: State | None = None) -> str:
 
 
 def docker_access_commands(user: str) -> str:
+    if platform.system() == "Darwin":
+        return (
+            "brew install colima docker docker-compose\n"
+            "colima start\n"
+            "docker info\n"
+            "rakkib web"
+        )
     return (
         "sudo groupadd -f docker\n"
         f"sudo usermod -aG docker {user}\n"
@@ -381,14 +444,16 @@ def docker_access_commands(user: str) -> str:
 
 def prepare_docker_access(user: str, *, validate_sudo: bool = True) -> str:
     if os.geteuid() == 0:
-        return "Rakkib is running as root; Docker socket group repair is not needed."
+        return "Rakkib is running as root; Docker is ready."
     if sys.platform != "linux":
-        return "Automatic Docker group repair is only supported on Linux."
+        if sys.platform == "darwin":
+            return "Run `rakkib auth`, then try again."
+        return "Run `rakkib auth` from a supported Linux or macOS host."
     if shutil.which("sudo") is None:
-        return "sudo is required to prepare Docker access for a non-root user."
+        return "sudo is required. Install sudo, then run `rakkib auth`."
 
     if validate_sudo and sys.stdin.isatty():
-        print("Rakkib needs sudo once to add this user to the docker group.", file=sys.stderr)
+        print("Rakkib needs sudo once to prepare Docker.", file=sys.stderr)
         sudo_check = subprocess.run(["sudo", "-v"])
         if sudo_check.returncode != 0:
             return "Sudo validation failed. Run `rakkib auth` from an interactive terminal."
@@ -405,7 +470,7 @@ def prepare_docker_access(user: str, *, validate_sudo: bool = True) -> str:
         if result.returncode != 0:
             detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
             return f"Could not run {' '.join(cmd)}: {detail}"
-    return f"Docker access was prepared for user {user}."
+    return f"Docker is ready for {user}."
 
 
 def _docker_group_rerun_command() -> list[str] | None:
@@ -420,29 +485,36 @@ def _offer_docker_group_rerun(console) -> None:
     command = _docker_group_rerun_command()
     if command is None:
         return
-    if not prompt_confirm("Re-run this Rakkib command in a docker-group subshell now?", default=True):
+    if not prompt_confirm("Continue with updated Docker access now?", default=True):
         return
-    console.print("[dim]Re-running current command with docker group access...[/dim]")
+    console.print("[dim]Continuing with updated Docker access...[/dim]")
     try:
         os.execvp(command[0], command)
     except OSError as exc:
-        console.print(f"[yellow]Could not re-run with sg docker: {exc}[/yellow]")
+        console.print(f"[yellow]Could not continue automatically: {exc}[/yellow]")
 
 
 def handle_docker_permission_denied(console, user: str) -> bool:
+    if platform.system() == "Darwin":
+        console.print(
+            "[bold red]Docker is installed, but it is not ready yet.[/bold red]"
+        )
+        console.print(
+            "[yellow]Run `rakkib auth`, then try again.[/yellow]"
+        )
+        return False
+
     console.print(
-        "[bold red]Docker is installed, but this shell cannot access /var/run/docker.sock.[/bold red]"
+        "[bold red]Docker needs permission for this user.[/bold red]"
     )
     repair_message = prepare_docker_access(user)
     console.print(f"[dim]{repair_message}[/dim]")
-    if repair_message.startswith("Docker access was prepared"):
+    if repair_message.startswith("Docker is ready"):
         _offer_docker_group_rerun(console)
     console.print(
-        "[yellow]Open a new shell or run `newgrp docker`, then verify with `docker info` "
-        "and rerun `rakkib pull`.[/yellow]"
+        "[yellow]Open a new shell, then rerun Rakkib.[/yellow]"
     )
-    console.print("[dim]One-command repair if needed: `rakkib auth`[/dim]")
-    console.print(f"[dim]Manual fallback:\n{docker_access_commands(user)}[/dim]")
+    console.print("[dim]Setup command: `rakkib auth`[/dim]")
     return False
 
 
@@ -450,47 +522,73 @@ def check_docker_prereq(state: State | None = None, console=None) -> bool:
     """Verify docker and docker compose are available. Install if missing."""
     docker_user = docker_access_user(state)
     if shutil.which("docker") is None:
-        sudo_error = _sudo_install_ready()
-        if sudo_error:
-            if console:
-                console.print(f"[bold red]{sudo_error}[/bold red]")
-            return False
+        if platform.system() != "Darwin":
+            sudo_error = _sudo_install_ready()
+            if sudo_error:
+                if console:
+                    console.print(f"[bold red]{sudo_error}[/bold red]")
+                return False
         with progress_spinner("Installing Docker..."):
             msg = attempt_fix_docker()
         if console:
             console.print(f"[dim]{msg}[/dim]")
         if shutil.which("docker") is None:
             if console:
-                console.print("[bold red]Docker installation did not succeed. Aborting.[/bold red]")
+                    console.print("[bold red]Docker setup failed.[/bold red]")
             return False
         if console:
-            console.print("[green]Docker installed successfully.[/green]")
+            console.print("[green]Docker is ready.[/green]")
 
     try:
         docker_run(["info"])
     except DockerError as exc:
         if is_docker_permission_error(exc.stderr or str(exc)):
             return handle_docker_permission_denied(console, docker_user) if console else False
-        if console:
-            console.print(f"[bold red]Docker is installed but not usable by this shell:[/bold red] {exc}")
-        return False
+        if platform.system() == "Darwin":
+            with progress_spinner("Starting Colima..."):
+                msg = attempt_start_colima()
+            if console:
+                console.print(f"[dim]{msg}[/dim]")
+            try:
+                docker_run(["info"])
+            except DockerError as retry_exc:
+                if console:
+                    console.print(f"[bold red]Docker is not ready:[/bold red] {retry_exc}")
+                return False
+        else:
+            if console:
+                console.print(f"[bold red]Docker is not ready:[/bold red] {exc}")
+            return False
 
     compose_check = docker_run(["compose", "version"], check=False)
     compose_output = f"{compose_check.stdout or ''}\n{compose_check.stderr or ''}"
     if compose_check.returncode != 0 and is_docker_permission_error(compose_output):
         return handle_docker_permission_denied(console, docker_user) if console else False
     if compose_check.returncode != 0:
-        with progress_spinner("Installing Docker Compose plugin..."):
+        if platform.system() == "Darwin":
+            with progress_spinner("Installing Docker Compose..."):
+                msg = attempt_fix_compose()
+            if console:
+                console.print(f"[dim]{msg}[/dim]")
+            compose_check = docker_run(["compose", "version"], check=False)
+            if compose_check.returncode != 0:
+                if console:
+                    console.print("[bold red]Docker Compose setup failed.[/bold red]")
+                return False
+            if console:
+                console.print("[green]Docker Compose is ready.[/green]")
+            return True
+        with progress_spinner("Installing Docker Compose..."):
             msg = attempt_fix_compose()
         if console:
             console.print(f"[dim]{msg}[/dim]")
         compose_check = docker_run(["compose", "version"], check=False)
         if compose_check.returncode != 0:
             if console:
-                console.print("[bold red]docker compose plugin installation did not succeed. Aborting.[/bold red]")
+                console.print("[bold red]Docker Compose setup failed.[/bold red]")
             return False
         if console:
-            console.print("[green]docker compose plugin installed successfully.[/green]")
+            console.print("[green]Docker Compose is ready.[/green]")
 
     return True
 
@@ -526,7 +624,7 @@ def ensure_prereqs(state: State | None = None, console=None, cloudflared_bin: st
             if console:
                 console.print(
                     "[bold red]cloudflared installation failed. "
-                    "Install manually: https://github.com/cloudflare/cloudflared/releases[/bold red]"
+                    "Check your network connection and supported platform, then retry.[/bold red]"
                 )
             return False
 
@@ -535,6 +633,8 @@ def ensure_prereqs(state: State | None = None, console=None, cloudflared_bin: st
 
 def check_compose() -> CheckResult:
     if not _command_exists("docker"):
+        if platform.system() == "Darwin":
+            return CheckResult("compose", "fail", True, "Docker is missing; run `rakkib auth`.")
         return CheckResult("compose", "fail", True, "docker command is missing")
     result = docker_run(["compose", "version"], check=False)
     if result.returncode == 0 and result.stdout.strip():
@@ -552,7 +652,7 @@ def check_cloudflared_binary() -> CheckResult:
         "cloudflared_cli",
         "warn",
         False,
-        "cloudflared host CLI is missing; Step 00 should install it before Step 3",
+        "Cloudflare tunnel tool is missing; run `rakkib auth` or retry setup",
     )
 
 
@@ -637,7 +737,7 @@ def check_cloudflare_readiness(state: State) -> list[CheckResult]:
                 "cloudflare_zone",
                 "warn",
                 False,
-                "domain is not yet active in Cloudflare for this install; Step 3 public routing will stay blocked",
+                "domain is not active in Cloudflare yet; public routing will wait until it is ready",
             )
         )
     elif zone_in is True:
@@ -650,7 +750,7 @@ def check_cloudflare_readiness(state: State) -> list[CheckResult]:
         results.append(CheckResult("cloudflare_auth", "warn", False, "Cloudflare auth method is not recorded yet"))
         return results
 
-    data_root = state.get("data_root", "/srv")
+    data_root = str(state.data_root)
     if auth_method == "browser_login":
         cert_path = Path(data_root) / "data" / "cloudflared" / "cert.pem"
         if cert_path.exists():
@@ -668,7 +768,7 @@ def check_cloudflare_readiness(state: State) -> list[CheckResult]:
                     "cloudflare_auth",
                     "warn",
                     False,
-                    f"browser-login auth cert is missing at {cert_path}; Step 3 will need cloudflared tunnel login",
+                    "Cloudflare login will be needed during setup",
                 )
             )
     elif auth_method == "api_token":
@@ -677,7 +777,7 @@ def check_cloudflare_readiness(state: State) -> list[CheckResult]:
                 "cloudflare_auth",
                 "ok",
                 False,
-                "advanced API token mode recorded; token should be requested only during Step 3",
+                "API token mode is selected; the token will be requested when needed",
             )
         )
     elif auth_method == "existing_tunnel":
@@ -748,7 +848,7 @@ def check_cloudflare_readiness(state: State) -> list[CheckResult]:
                     "cloudflare_creds",
                     "warn",
                     False,
-                    "tunnel credentials are not recorded yet; Step 3 must create or recover them",
+                    "Cloudflare tunnel credentials will be created or recovered during setup",
                 )
             )
 
@@ -827,6 +927,17 @@ def summary_text(checks: list[CheckResult]) -> str:
 
 def attempt_fix_docker() -> str:
     """Attempt to install Docker via get.docker.com. Returns a message describing the result."""
+    if platform.system() == "Darwin":
+        _ensure_macos_tool_path()
+        brew = _macos_brew_cmd()
+        if brew is None:
+            return "Homebrew is required. Rerun install.sh, then run `rakkib auth`."
+        result = subprocess.run([brew, "install", *MACOS_DOCKER_PACKAGES], capture_output=True, text=True)
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
+            return f"Docker setup failed: {detail}"
+        start_msg = attempt_start_colima()
+        return f"Docker installed. {start_msg}"
     if platform.system() != "Linux":
         return "Automatic Docker installation is only supported on Linux."
 
@@ -863,11 +974,22 @@ def attempt_fix_docker() -> str:
 
     subprocess.run(["sudo", "systemctl", "enable", "--now", "docker"],
                    capture_output=True, text=True)
-    return "Docker installed via get.docker.com; this trusts Docker's install script over TLS."
+    return "Docker installed."
 
 
 def attempt_fix_compose() -> str:
     """Install docker-compose-plugin. Returns a message describing the result."""
+    if platform.system() == "Darwin":
+        _ensure_macos_tool_path()
+        brew = _macos_brew_cmd()
+        if brew is None:
+            return "Homebrew is required. Rerun install.sh, then run `rakkib auth`."
+        result = subprocess.run([brew, "install", "docker-compose"], capture_output=True, text=True)
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
+            return f"Docker Compose install via Homebrew failed: {detail}"
+        return "Docker Compose installed."
+
     # get.docker.com adds the Docker apt repo, so the plugin is available via apt.
     if _command_exists("apt-get"):
         lock_error = wait_for_apt_locks(on_wait=_notify_apt_wait)
@@ -881,17 +1003,17 @@ def attempt_fix_compose() -> str:
             env=_package_manager_env(),
         )
         if result.returncode == 0:
-            return "docker-compose-plugin installed via apt."
+            return "Docker Compose installed."
 
     # Fallback: download the latest binary directly.
     machine = platform.machine()
     arch = _normalize_arch(machine)
     if not arch:
-        return f"Unsupported architecture for compose plugin: {machine}"
+        return f"Unsupported architecture for Docker Compose: {machine}"
     arch_release = "x86_64" if arch == "amd64" else "aarch64"
     expected_sha256 = COMPOSE_SHA256.get(arch_release)
     if not expected_sha256:
-        return f"Unsupported architecture for compose plugin checksum: {arch_release}"
+        return f"Unsupported architecture for Docker Compose: {arch_release}"
 
     url = f"https://github.com/docker/compose/releases/download/{COMPOSE_VERSION}/docker-compose-linux-{arch_release}"
     plugin_path = Path("/usr/local/lib/docker/cli-plugins/docker-compose")
@@ -917,13 +1039,28 @@ def attempt_fix_compose() -> str:
         verify = subprocess.run(["docker", "compose", "version"], capture_output=True, text=True)
         if verify.returncode != 0:
             return f"docker compose plugin install verification failed: {verify.stderr.strip() or 'unknown error'}"
-        return f"docker compose plugin {COMPOSE_VERSION} installed from GitHub releases with SHA256 verification."
+        return "Docker Compose installed."
     except FileNotFoundError as e:
         return f"Required command not found: {e}"
 
 
 def attempt_fix_cloudflared() -> str:
     """Install cloudflared binary into ~/.local/bin. Returns a message describing the result."""
+    if platform.system() == "Darwin":
+        _ensure_macos_tool_path()
+        brew = _macos_brew_cmd()
+        if brew is not None:
+            result = subprocess.run([brew, "install", "cloudflared"], capture_output=True, text=True)
+            if result.returncode != 0:
+                detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
+                return f"Homebrew cloudflared install failed: {detail}"
+            cloudflared = _macos_tool_cmd("cloudflared") or "cloudflared"
+            verify = subprocess.run([cloudflared, "--version"], capture_output=True, text=True)
+            if verify.returncode != 0:
+                detail = verify.stderr.strip() or verify.stdout.strip() or "unknown error"
+                return f"Homebrew cloudflared install verification failed: {detail}"
+            return "Cloudflare tunnel tool installed."
+
     if not _command_exists("curl"):
         return "curl is required but not found. Install curl first."
 
@@ -934,22 +1071,41 @@ def attempt_fix_cloudflared() -> str:
     kernel = "darwin" if platform.system() == "Darwin" else "linux"
     expected_sha256 = CLOUDFLARED_SHA256.get((kernel, arch))
     if not expected_sha256:
-        return f"Unsupported platform for pinned cloudflared checksum: {kernel}/{arch}"
-    url = f"https://github.com/cloudflare/cloudflared/releases/download/{CLOUDFLARED_VERSION}/cloudflared-{kernel}-{arch}"
+        return f"Unsupported platform for Cloudflare tunnel tool: {kernel}/{arch}"
+    asset_name = f"cloudflared-{kernel}-{arch}"
+    if kernel == "darwin":
+        asset_name = f"{asset_name}.tgz"
+    url = f"https://github.com/cloudflare/cloudflared/releases/download/{CLOUDFLARED_VERSION}/{asset_name}"
     dest = local_bin / "cloudflared"
+    download_path = local_bin / asset_name if kernel == "darwin" else dest
 
     result = subprocess.run(
-        ["curl", "-fsSL", "-o", str(dest), url],
+        ["curl", "-fsSL", "-o", str(download_path), url],
         capture_output=True,
         text=True,
     )
     if result.returncode != 0:
         return f"cloudflared download failed: {result.stderr.strip() or 'unknown error'}"
-    checksum_error = _verify_download_sha256(dest, expected_sha256)
+    checksum_error = _verify_download_sha256(download_path, expected_sha256)
     if checksum_error:
         return f"cloudflared download failed verification: {checksum_error}"
+    if kernel == "darwin":
+        try:
+            with tarfile.open(download_path, "r:gz") as archive:
+                member = archive.getmember("cloudflared")
+                source = archive.extractfile(member)
+                if source is None:
+                    return "cloudflared archive extraction failed: cloudflared member is not a file"
+                with dest.open("wb") as handle:
+                    shutil.copyfileobj(source, handle)
+        except (KeyError, OSError, tarfile.TarError) as exc:
+            return f"cloudflared archive extraction failed: {exc}"
+        try:
+            download_path.unlink()
+        except OSError:
+            pass
     dest.chmod(0o755)
-    return f"cloudflared {CLOUDFLARED_VERSION} downloaded to {dest} with SHA256 verification"
+    return "Cloudflare tunnel tool installed."
 
 
 def process_owners_for_ports() -> dict[int, str]:

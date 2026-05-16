@@ -908,7 +908,7 @@ class TestAuth:
         runner = CliRunner()
         result = runner.invoke(cli, ["auth"])
         assert result.exit_code == 0
-        assert "Already running as root" in result.output
+        assert "Authorization is ready" in result.output
 
     def test_auth_sudo_ready(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr(os, "geteuid", lambda: 1000)
@@ -918,7 +918,7 @@ class TestAuth:
         with patch("subprocess.run", return_value=MagicMock(returncode=0)):
             result = runner.invoke(cli, ["auth"])
         assert result.exit_code == 0
-        assert "Sudo is ready" in result.output
+        assert "Authorization is ready" in result.output
 
     def test_auth_sudo_missing(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr(os, "geteuid", lambda: 1000)
@@ -927,6 +927,28 @@ class TestAuth:
         result = runner.invoke(cli, ["auth"])
         assert result.exit_code == 1
         assert "sudo is required" in result.output
+
+    def test_auth_mac_missing_docker_installs_colima_backend(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr(os, "geteuid", lambda: 1000)
+        monkeypatch.setattr("rakkib.cli.platform.system", lambda: "Darwin")
+        which_calls = {"count": 0}
+
+        def fake_which(cmd: str):
+            if cmd != "docker":
+                return None
+            which_calls["count"] += 1
+            return "/usr/local/bin/docker" if which_calls["count"] > 1 else None
+
+        monkeypatch.setattr("rakkib.cli.shutil.which", fake_which)
+        monkeypatch.setattr("rakkib.cli.attempt_fix_docker", lambda: "Docker installed.")
+        monkeypatch.setattr("rakkib.cli.docker_run", lambda _args: MagicMock(returncode=0, stdout="", stderr=""))
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["auth"], obj={"repo_dir": tmp_path})
+
+        assert result.exit_code == 0
+        assert "Preparing Docker" in result.output
+        assert "Docker is ready" in result.output
 
     def test_auth_help(self, tmp_path: Path):
         runner = CliRunner()
@@ -962,7 +984,7 @@ class TestAuth:
             result = runner.invoke(cli, ["auth"], obj={"repo_dir": repo_dir})
 
         assert result.exit_code == 0
-        assert "Docker access is prepared" in result.output
+        assert "Docker is ready for your user" in result.output
         assert ["sudo", "-n", "usermod", "-aG", "docker", "ubuntu"] in [
             call.args[0] for call in mock_run.call_args_list
         ]
@@ -981,7 +1003,7 @@ class TestAuth:
             result = runner.invoke(cli, ["auth"], obj={"repo_dir": repo_dir})
 
         assert result.exit_code == 0
-        assert "Docker is already usable" in result.output
+        assert "Docker is ready" in result.output
 
 
 class TestPrivileged:

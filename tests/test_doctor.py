@@ -6,8 +6,9 @@ import json
 import platform
 import subprocess
 import sys
+from io import BytesIO
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
@@ -16,6 +17,7 @@ from rakkib.doctor import (
     attempt_fix_cloudflared,
     attempt_fix_docker,
     attempt_fix_compose,
+    attempt_start_colima,
     check_arch,
     check_cloudflared_binary,
     check_compose,
@@ -152,6 +154,13 @@ class TestCheckDocker:
         result = check_docker()
         assert result.status == "fail"
         assert "missing" in result.message
+
+    @patch("platform.system", return_value="Darwin")
+    @patch("rakkib.doctor._command_exists", return_value=False)
+    def test_missing_on_mac_points_to_rakkib_auth(self, _cmd: MagicMock, _system: MagicMock):
+        result = check_docker()
+        assert result.status == "fail"
+        assert "rakkib auth" in result.message
 
     @patch("rakkib.doctor._command_exists", return_value=True)
     @patch("rakkib.doctor.docker_run")
@@ -343,9 +352,33 @@ class TestSummaryText:
 
 class TestAttemptFixDocker:
     @patch("platform.system", return_value="Darwin")
-    def test_skips_mac(self, _mock: MagicMock):
+    @patch("rakkib.doctor.attempt_start_colima", return_value="Docker started.")
+    @patch("rakkib.doctor._macos_brew_cmd", return_value="/usr/local/bin/brew")
+    @patch("subprocess.run")
+    def test_mac_installs_colima_backend(
+        self,
+        mock_run: MagicMock,
+        _brew: MagicMock,
+        _start: MagicMock,
+        _system: MagicMock,
+    ):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         msg = attempt_fix_docker()
-        assert "only supported on Linux" in msg
+        assert "Docker installed" in msg
+        assert mock_run.call_args.args[0] == [
+            "/usr/local/bin/brew",
+            "install",
+            "colima",
+            "docker",
+            "docker-compose",
+        ]
+
+    @patch("platform.system", return_value="Darwin")
+    @patch("rakkib.doctor._macos_brew_cmd", return_value=None)
+    def test_mac_without_homebrew_is_actionable(self, _brew: MagicMock, _system: MagicMock):
+        msg = attempt_fix_docker()
+        assert "Homebrew" in msg
+        assert "install.sh" in msg
 
     @patch("platform.system", return_value="Linux")
     @patch("rakkib.doctor.os.geteuid", return_value=0)
@@ -362,7 +395,7 @@ class TestAttemptFixDocker:
     ):
         mock_run.return_value = MagicMock(returncode=0, stderr="")
         msg = attempt_fix_docker()
-        assert "get.docker.com" in msg
+        assert "Docker installed" in msg
         mock_wait.assert_called_once()
         assert mock_run.call_args_list[0].kwargs["env"]["DEBIAN_FRONTEND"] == "noninteractive"
         assert mock_run.call_args_list[0].kwargs["env"]["NEEDRESTART_MODE"] == "a"
@@ -446,7 +479,7 @@ class TestAttemptFixDocker:
             MagicMock(returncode=0, stdout="", stderr=""),
         ]
         msg = attempt_fix_docker()
-        assert "get.docker.com" in msg
+        assert "Docker installed" in msg
         assert mock_run.call_args_list[1].args[0] == [
             "sudo",
             "-n",
@@ -466,7 +499,7 @@ class TestDockerPermissionRepair:
     @patch("rakkib.doctor.os.execvp", side_effect=OSError("exec failed"))
     @patch("rakkib.doctor.prompt_confirm", return_value=True)
     @patch("rakkib.doctor.shutil.which", return_value="/usr/bin/sg")
-    @patch("rakkib.doctor.prepare_docker_access", return_value="Docker access was prepared for user ubuntu.")
+    @patch("rakkib.doctor.prepare_docker_access", return_value="Docker is ready for ubuntu.")
     def test_offers_current_command_rerun_after_group_repair(
         self,
         _repair: MagicMock,
@@ -481,7 +514,7 @@ class TestDockerPermissionRepair:
         assert handle_docker_permission_denied(MagicMock(), "ubuntu") is False
 
         mock_prompt.assert_called_once_with(
-            "Re-run this Rakkib command in a docker-group subshell now?",
+            "Continue with updated Docker access now?",
             default=True,
         )
         mock_execvp.assert_called_once_with(
@@ -501,6 +534,27 @@ class TestDockerPermissionRepair:
         assert handle_docker_permission_denied(MagicMock(), "ubuntu") is False
         mock_prompt.assert_not_called()
         mock_execvp.assert_not_called()
+
+    @patch("platform.system", return_value="Darwin")
+    def test_mac_permission_message_uses_colima(self, _system: MagicMock):
+        console = MagicMock()
+        assert handle_docker_permission_denied(console, "tester") is False
+        rendered = "\n".join(call.args[0] for call in console.print.call_args_list)
+        assert "rakkib auth" in rendered
+        assert "newgrp docker" not in rendered
+
+
+class TestAttemptStartColima:
+    @patch("platform.system", return_value="Darwin")
+    @patch("rakkib.doctor._macos_tool_cmd", return_value="/usr/local/bin/colima")
+    @patch("subprocess.run")
+    def test_start_success(self, mock_run: MagicMock, _tool: MagicMock, _system: MagicMock):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        msg = attempt_start_colima()
+
+        assert "Docker started" in msg
+        assert mock_run.call_args.args[0] == ["/usr/local/bin/colima", "start"]
 
 
 class TestWaitForAptLocks:
@@ -537,6 +591,20 @@ class TestWaitForAptLocks:
 
 
 class TestAttemptFixCompose:
+    @patch("platform.system", return_value="Darwin")
+    @patch("rakkib.doctor._macos_brew_cmd", return_value="/usr/local/bin/brew")
+    @patch("subprocess.run")
+    def test_mac_compose_installs_with_homebrew(
+        self,
+        mock_run: MagicMock,
+        _brew: MagicMock,
+        _system: MagicMock,
+    ):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        msg = attempt_fix_compose()
+        assert "Docker Compose installed" in msg
+        assert mock_run.call_args.args[0] == ["/usr/local/bin/brew", "install", "docker-compose"]
+
     @patch("rakkib.doctor.wait_for_apt_locks", return_value=None)
     @patch("rakkib.doctor._command_exists", return_value=True)
     @patch("platform.machine", return_value="x86_64")
@@ -550,7 +618,7 @@ class TestAttemptFixCompose:
     ):
         mock_run.return_value = MagicMock(returncode=0, stderr="")
         msg = attempt_fix_compose()
-        assert "docker-compose-plugin installed via apt" in msg
+        assert "Docker Compose installed" in msg
         mock_wait.assert_called_once()
         assert "DPkg::Lock::Timeout=900" in mock_run.call_args.args[0]
         assert "DEBIAN_FRONTEND=noninteractive" in mock_run.call_args.args[0]
@@ -610,6 +678,28 @@ class TestAttemptFixCompose:
 
 
 class TestAttemptFixCloudflared:
+    @patch("rakkib.doctor._macos_tool_cmd", return_value="/opt/homebrew/bin/cloudflared")
+    @patch("rakkib.doctor._macos_brew_cmd", return_value="/opt/homebrew/bin/brew")
+    @patch("subprocess.run")
+    @patch("platform.system", return_value="Darwin")
+    def test_download_success_darwin_brew(
+        self,
+        _system: MagicMock,
+        mock_run: MagicMock,
+        _brew: MagicMock,
+        _cloudflared: MagicMock,
+    ):
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stderr="", stdout=""),
+            MagicMock(returncode=0, stderr="", stdout="cloudflared version 2026.3.0"),
+        ]
+
+        msg = attempt_fix_cloudflared()
+
+        assert "Cloudflare tunnel tool installed" in msg
+        assert mock_run.call_args_list[0].args[0] == ["/opt/homebrew/bin/brew", "install", "cloudflared"]
+        assert mock_run.call_args_list[1].args[0] == ["/opt/homebrew/bin/cloudflared", "--version"]
+
     @patch("subprocess.run")
     @patch("rakkib.doctor._sha256_file", return_value="4a9e50e6d6d798e90fcd01933151a90bf7edd99a0a55c28ad18f2e16263a5c30")
     @patch("platform.system", return_value="Linux")
@@ -627,7 +717,77 @@ class TestAttemptFixCloudflared:
     ):
         mock_run.return_value = MagicMock(returncode=0, stderr="")
         msg = attempt_fix_cloudflared()
-        assert "downloaded" in msg or "installed" in msg
+        assert "Cloudflare tunnel tool installed" in msg
+        assert mock_run.call_args.args[0][-1].endswith("/cloudflared-linux-amd64")
+
+    @patch("pathlib.Path.open", mock_open())
+    @patch("pathlib.Path.unlink")
+    @patch("pathlib.Path.chmod")
+    @patch("pathlib.Path.mkdir")
+    @patch("rakkib.doctor.tarfile.open")
+    @patch("subprocess.run")
+    @patch("rakkib.doctor._macos_brew_cmd", return_value=None)
+    @patch("rakkib.doctor._sha256_file", return_value="0f30140c4a5e213d22f951ef4c964cac5fb6a5f061ba6eba5ea932999f7c0394")
+    @patch("platform.system", return_value="Darwin")
+    @patch("platform.machine", return_value="x86_64")
+    def test_download_success_darwin_amd64_archive(
+        self,
+        _machine: MagicMock,
+        _system: MagicMock,
+        _sha: MagicMock,
+        _brew: MagicMock,
+        mock_run: MagicMock,
+        mock_tar_open: MagicMock,
+        _mkdir: MagicMock,
+        _chmod: MagicMock,
+        mock_unlink: MagicMock,
+    ):
+        archive = MagicMock()
+        archive.__enter__.return_value = archive
+        archive.extractfile.return_value = BytesIO(b"cloudflared")
+        mock_tar_open.return_value = archive
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+
+        msg = attempt_fix_cloudflared()
+
+        assert "Cloudflare tunnel tool installed" in msg
+        assert mock_run.call_args.args[0][-1].endswith("/cloudflared-darwin-amd64.tgz")
+        mock_tar_open.assert_called_once()
+        archive.getmember.assert_called_once_with("cloudflared")
+        mock_unlink.assert_called_once()
+
+    @patch("pathlib.Path.open", mock_open())
+    @patch("pathlib.Path.unlink")
+    @patch("pathlib.Path.chmod")
+    @patch("pathlib.Path.mkdir")
+    @patch("rakkib.doctor.tarfile.open")
+    @patch("subprocess.run")
+    @patch("rakkib.doctor._macos_brew_cmd", return_value=None)
+    @patch("rakkib.doctor._sha256_file", return_value="2aae4f69b0fc1c671b8353b4f594cbd902cd1e360c8eed2b8cad4602cb1546fb")
+    @patch("platform.system", return_value="Darwin")
+    @patch("platform.machine", return_value="arm64")
+    def test_download_success_darwin_arm64_archive(
+        self,
+        _machine: MagicMock,
+        _system: MagicMock,
+        _sha: MagicMock,
+        _brew: MagicMock,
+        mock_run: MagicMock,
+        mock_tar_open: MagicMock,
+        _mkdir: MagicMock,
+        _chmod: MagicMock,
+        _unlink: MagicMock,
+    ):
+        archive = MagicMock()
+        archive.__enter__.return_value = archive
+        archive.extractfile.return_value = BytesIO(b"cloudflared")
+        mock_tar_open.return_value = archive
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+
+        msg = attempt_fix_cloudflared()
+
+        assert "Cloudflare tunnel tool installed" in msg
+        assert mock_run.call_args.args[0][-1].endswith("/cloudflared-darwin-arm64.tgz")
 
     @patch("subprocess.run")
     @patch("platform.system", return_value="Linux")
