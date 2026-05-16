@@ -140,9 +140,9 @@ If the user answers `n`, note that step `steps/00-prereqs.md` will handle Docker
 ## Record in .fss-state.yaml
 
 ```yaml
-platform: linux        # or: mac
+platform: linux        # or: mac, auto-detected from the host
 arch: amd64            # or: arm64, auto-detected from `uname -m`
-privilege_mode: sudo   # normal Linux/Mac flow; root only for repair/debug sessions
+privilege_mode: sudo   # normal Linux flow; root only for repair/debug sessions
 privilege_strategy: on_demand  # request sudo only for specific post-confirmation actions
 docker_installed: true # or: false
 ```

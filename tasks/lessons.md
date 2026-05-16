@@ -8,3 +8,5 @@
 - When asked to validate pending services, continue through the full fix, commit, push, runtime-sync, and bare-metal validation loop unless the user explicitly asks for discovery only.
 - MacSupport validation target: `ssh itest@192.168.0.100` (MacBook-Air, macOS 14.8.7, x86_64). Use this real Mac after each macOS installer fix before reporting the Mac experience as working; do not store the password in tracked files.
 - For MacSupport sudo validation over SSH, allocate a TTY and feed the sudo prompt through that TTY; priming sudo with `sudo -S` before a curl-piped installer can cache credentials for the wrong context.
+- For unavailable Questionary options, keep them as real disabled choices even if the UI shows a marker; making them visually enabled can make unsupported options clickable.
+- Do not derive user-facing select labels from aliases; add explicit display labels when a canonical value needs descriptive copy.
