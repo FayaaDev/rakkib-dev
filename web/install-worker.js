@@ -1,4 +1,4 @@
-const INSTALLER_URL = 'https://raw.githubusercontent.com/FayaaDev/Rakkib/main/install.sh'
+const INSTALLER_URL = 'https://raw.githubusercontent.com/FayaaDev/rakkib/main/install.sh'
 
 function responseHeaders(cacheControl) {
   return {
