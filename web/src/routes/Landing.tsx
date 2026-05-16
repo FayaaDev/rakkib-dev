@@ -320,6 +320,12 @@ export function Landing() {
           })() : null}
         </section>
       </main>
+
+      <footer className="site-footer">
+        <a href="https://x.com/DrFayaa" target="_blank" rel="noreferrer">
+          FayaaDev@2026
+        </a>
+      </footer>
     </div>
   )
 }
