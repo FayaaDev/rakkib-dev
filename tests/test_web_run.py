@@ -125,7 +125,7 @@ def test_host_auth_readiness_flags_docker_group_repair(monkeypatch):
     assert status.requires_restart is True
 
 
-def test_host_auth_readiness_on_mac_requires_docker_desktop(monkeypatch):
+def test_host_auth_readiness_on_mac_points_to_auth_when_docker_missing(monkeypatch):
     monkeypatch.setattr("rakkib.web.host_auth.os.geteuid", lambda: 1000)
     monkeypatch.setattr("rakkib.web.host_auth.platform.system", lambda: "Darwin")
     monkeypatch.setattr("rakkib.web.host_auth.shutil.which", lambda _cmd: None)
@@ -133,9 +133,9 @@ def test_host_auth_readiness_on_mac_requires_docker_desktop(monkeypatch):
     status = check_host_auth_readiness()
 
     assert status.ok is False
-    assert status.code == "docker_desktop_missing"
-    assert status.command is None
-    assert "Docker Desktop" in status.message
+    assert status.code == "docker_missing"
+    assert status.command == "rakkib auth"
+    assert "Colima" in status.message
 
 
 def test_host_auth_readiness_on_mac_skips_sudo_when_docker_ready(monkeypatch):
@@ -153,7 +153,7 @@ def test_host_auth_readiness_on_mac_skips_sudo_when_docker_ready(monkeypatch):
 
     assert status.ok is True
     assert status.code == "ready"
-    assert "Docker Desktop" in status.message
+    assert "Docker" in status.message
 
 
 def test_host_auth_readiness_allows_root(monkeypatch):

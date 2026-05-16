@@ -527,8 +527,8 @@ If rakkib is not on PATH yet, run one of:
 Or run directly:
   ${HOME}/.local/bin/rakkib web
 
-For local service testing on macOS, install and start Docker Desktop first.
-Verify it with 'docker info'. Rakkib does not use Linux docker-group repair on macOS.
+For local service testing on macOS, run 'rakkib auth' to install/start
+the Colima Docker backend if Docker is not already available.
 
 To uninstall:
   rakkib uninstall --yes

@@ -353,7 +353,7 @@ class TestRun:
         with pytest.raises(DockerError) as exc_info:
             _run(["docker", "info"])
 
-        assert "Docker Desktop" in str(exc_info.value)
+        assert "colima start" in str(exc_info.value)
         assert "newgrp docker" not in str(exc_info.value)
 
     @patch("rakkib.docker.subprocess.run")

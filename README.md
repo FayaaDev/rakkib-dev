@@ -91,11 +91,11 @@ sudo rakkib privileged fix-repo-owner --state .fss-state.yaml
 
 ## Requirements
 
-- Ubuntu 24.04 is the tested production deployment target; macOS is supported for local CLI/web UI use and Docker Desktop-backed testing
+- Ubuntu 24.04 is the tested production deployment target; macOS is supported for local CLI/web UI use and Colima-backed Docker testing
 - Normal sudo-capable admin user — do not run as root
 - A domain on Cloudflare only when using public HTTPS routes
 - Python 3.9+ (the installer handles venv and pip)
-- On macOS, the installer bootstraps Xcode Command Line Tools, Homebrew, Git, and Python as needed; Docker Desktop is required before applying local services
+- On macOS, the installer bootstraps Xcode Command Line Tools, Homebrew, Git, and Python as needed; run `rakkib auth` to install/start the Colima Docker backend before applying local services
 
 ## License
 

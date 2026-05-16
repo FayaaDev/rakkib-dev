@@ -44,9 +44,8 @@ def check_host_auth_readiness() -> HostAuthStatus:
         if shutil.which("docker") is None:
             return HostAuthStatus(
                 False,
-                "docker_desktop_missing",
-                "Docker Desktop is required for local service testing on macOS. Install and start Docker Desktop before applying services.",
-                command=None,
+                "docker_missing",
+                "Docker is missing on macOS. Run `rakkib auth` in the terminal that started this web session to install and start the Colima Docker backend.",
             )
 
         try:
@@ -54,9 +53,8 @@ def check_host_auth_readiness() -> HostAuthStatus:
         except DockerError as exc:
             return HostAuthStatus(
                 False,
-                "docker_desktop_unavailable",
-                f"Docker Desktop is not reachable from this web session. Start or restart Docker Desktop, then restart `rakkib web`: {exc}",
-                command=None,
+                "docker_unavailable",
+                f"Docker is not reachable from this web session. Run `rakkib auth` to start Colima, then restart `rakkib web`: {exc}",
                 requires_restart=True,
             )
 
@@ -65,12 +63,11 @@ def check_host_auth_readiness() -> HostAuthStatus:
             return HostAuthStatus(
                 False,
                 "compose_unavailable",
-                "Docker Compose v2 is unavailable. Update or reinstall Docker Desktop, then restart `rakkib web`.",
-                command=None,
+                "Docker Compose v2 is unavailable. Run `rakkib auth` to install the macOS Docker backend, then restart `rakkib web`.",
                 requires_restart=True,
             )
 
-        return HostAuthStatus(True, "ready", "Docker Desktop is ready for local service testing.", command=None)
+        return HostAuthStatus(True, "ready", "Docker is ready for local service testing.", command=None)
 
     if shutil.which("sudo") is None:
         return HostAuthStatus(

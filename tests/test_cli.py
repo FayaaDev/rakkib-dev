@@ -928,16 +928,26 @@ class TestAuth:
         assert result.exit_code == 1
         assert "sudo is required" in result.output
 
-    def test_auth_mac_missing_docker_points_to_docker_desktop(self, tmp_path: Path, monkeypatch):
+    def test_auth_mac_missing_docker_installs_colima_backend(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr(os, "geteuid", lambda: 1000)
         monkeypatch.setattr("rakkib.cli.platform.system", lambda: "Darwin")
-        monkeypatch.setattr("rakkib.cli.shutil.which", lambda _cmd: None)
+        which_calls = {"count": 0}
+
+        def fake_which(cmd: str):
+            if cmd != "docker":
+                return None
+            which_calls["count"] += 1
+            return "/usr/local/bin/docker" if which_calls["count"] > 1 else None
+
+        monkeypatch.setattr("rakkib.cli.shutil.which", fake_which)
+        monkeypatch.setattr("rakkib.cli.attempt_fix_docker", lambda: "Installed Colima Docker backend via Homebrew.")
+        monkeypatch.setattr("rakkib.cli.docker_run", lambda _args: MagicMock(returncode=0, stdout="", stderr=""))
 
         runner = CliRunner()
         result = runner.invoke(cli, ["auth"], obj={"repo_dir": tmp_path})
 
-        assert result.exit_code == 1
-        assert "Docker Desktop" in result.output
+        assert result.exit_code == 0
+        assert "Colima Docker backend" in result.output
         assert "docker-group repair" in result.output
 
     def test_auth_help(self, tmp_path: Path):

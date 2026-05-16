@@ -43,6 +43,41 @@ def _command_exists(cmd: str) -> bool:
     return shutil.which(cmd) is not None
 
 
+def _macos_brew_cmd() -> str | None:
+    brew = shutil.which("brew")
+    if brew:
+        return brew
+    for candidate in ("/opt/homebrew/bin/brew", "/usr/local/bin/brew"):
+        if Path(candidate).is_file():
+            return candidate
+    return None
+
+
+def _macos_tool_cmd(name: str) -> str | None:
+    tool = shutil.which(name)
+    if tool:
+        return tool
+    for prefix in ("/opt/homebrew/bin", "/usr/local/bin"):
+        candidate = Path(prefix) / name
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def attempt_start_colima() -> str:
+    """Start the Colima-backed Docker daemon on macOS."""
+    if platform.system() != "Darwin":
+        return "Colima is only used on macOS."
+    colima = _macos_tool_cmd("colima")
+    if colima is None:
+        return "Colima is not installed. Run `rakkib auth` to install the macOS Docker backend."
+    result = subprocess.run([colima, "start"], capture_output=True, text=True)
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
+        return f"Colima failed to start: {detail}"
+    return "Colima started; Docker daemon should be reachable."
+
+
 APT_LOCK_PATHS = (
     Path("/var/lib/dpkg/lock-frontend"),
     Path("/var/lib/dpkg/lock"),
@@ -59,6 +94,8 @@ PACKAGE_MANAGER_SAFE_ENV = {
     "NEEDRESTART_SUSPEND": "1",
     "UCF_FORCE_CONFFOLD": "1",
 }
+
+MACOS_DOCKER_PACKAGES = ("colima", "docker", "docker-compose")
 
 CLOUDFLARED_VERSION = "2026.3.0"
 CLOUDFLARED_SHA256 = {
@@ -357,7 +394,7 @@ def check_disk(data_root: str) -> CheckResult:
 def check_docker() -> CheckResult:
     if not _command_exists("docker"):
         if platform.system() == "Darwin":
-            return CheckResult("docker", "fail", True, "docker command is missing; install and start Docker Desktop for local service testing")
+            return CheckResult("docker", "fail", True, "docker command is missing; run `rakkib auth` to install the Colima Docker backend")
         return CheckResult("docker", "fail", True, "docker command is missing")
     try:
         docker_run(["info"])
@@ -373,8 +410,8 @@ def docker_access_user(state: State | None = None) -> str:
 def docker_access_commands(user: str) -> str:
     if platform.system() == "Darwin":
         return (
-            "Install Docker Desktop for Mac\n"
-            "Start Docker Desktop\n"
+            "brew install colima docker docker-compose\n"
+            "colima start\n"
             "docker info\n"
             "rakkib web"
         )
@@ -393,7 +430,7 @@ def prepare_docker_access(user: str, *, validate_sudo: bool = True) -> str:
         return "Rakkib is running as root; Docker socket group repair is not needed."
     if sys.platform != "linux":
         if sys.platform == "darwin":
-            return "Docker group repair is not used on macOS. Install and start Docker Desktop, then run `docker info`."
+            return "Docker group repair is not used on macOS. Run `rakkib auth` to install/start the Colima Docker backend, then run `docker info`."
         return "Automatic Docker group repair is only supported on Linux."
     if shutil.which("sudo") is None:
         return "sudo is required to prepare Docker access for a non-root user."
@@ -443,10 +480,10 @@ def _offer_docker_group_rerun(console) -> None:
 def handle_docker_permission_denied(console, user: str) -> bool:
     if platform.system() == "Darwin":
         console.print(
-            "[bold red]Docker Desktop is installed, but this shell cannot access it.[/bold red]"
+            "[bold red]Docker is installed, but this shell cannot access the macOS Docker backend.[/bold red]"
         )
         console.print(
-            "[yellow]Start or restart Docker Desktop, verify with `docker info`, "
+            "[yellow]Run `colima start`, verify with `docker info`, "
             "and rerun Rakkib.[/yellow]"
         )
         return False
@@ -471,18 +508,12 @@ def check_docker_prereq(state: State | None = None, console=None) -> bool:
     """Verify docker and docker compose are available. Install if missing."""
     docker_user = docker_access_user(state)
     if shutil.which("docker") is None:
-        if platform.system() == "Darwin":
-            if console:
-                console.print(
-                    "[bold red]Docker Desktop is required for local service testing on macOS. "
-                    "Install and start Docker Desktop, then rerun Rakkib.[/bold red]"
-                )
-            return False
-        sudo_error = _sudo_install_ready()
-        if sudo_error:
-            if console:
-                console.print(f"[bold red]{sudo_error}[/bold red]")
-            return False
+        if platform.system() != "Darwin":
+            sudo_error = _sudo_install_ready()
+            if sudo_error:
+                if console:
+                    console.print(f"[bold red]{sudo_error}[/bold red]")
+                return False
         with progress_spinner("Installing Docker..."):
             msg = attempt_fix_docker()
         if console:
@@ -499,9 +530,21 @@ def check_docker_prereq(state: State | None = None, console=None) -> bool:
     except DockerError as exc:
         if is_docker_permission_error(exc.stderr or str(exc)):
             return handle_docker_permission_denied(console, docker_user) if console else False
-        if console:
-            console.print(f"[bold red]Docker is installed but not usable by this shell:[/bold red] {exc}")
-        return False
+        if platform.system() == "Darwin":
+            with progress_spinner("Starting Colima..."):
+                msg = attempt_start_colima()
+            if console:
+                console.print(f"[dim]{msg}[/dim]")
+            try:
+                docker_run(["info"])
+            except DockerError as retry_exc:
+                if console:
+                    console.print(f"[bold red]Docker is installed but not usable by this shell:[/bold red] {retry_exc}")
+                return False
+        else:
+            if console:
+                console.print(f"[bold red]Docker is installed but not usable by this shell:[/bold red] {exc}")
+            return False
 
     compose_check = docker_run(["compose", "version"], check=False)
     compose_output = f"{compose_check.stdout or ''}\n{compose_check.stderr or ''}"
@@ -509,12 +552,18 @@ def check_docker_prereq(state: State | None = None, console=None) -> bool:
         return handle_docker_permission_denied(console, docker_user) if console else False
     if compose_check.returncode != 0:
         if platform.system() == "Darwin":
+            with progress_spinner("Installing Docker Compose..."):
+                msg = attempt_fix_compose()
             if console:
-                console.print(
-                    "[bold red]Docker Compose v2 is unavailable. Update or reinstall Docker Desktop, "
-                    "then verify with `docker compose version`.[/bold red]"
-                )
-            return False
+                console.print(f"[dim]{msg}[/dim]")
+            compose_check = docker_run(["compose", "version"], check=False)
+            if compose_check.returncode != 0:
+                if console:
+                    console.print("[bold red]docker compose installation did not succeed. Aborting.[/bold red]")
+                return False
+            if console:
+                console.print("[green]docker compose installed successfully.[/green]")
+            return True
         with progress_spinner("Installing Docker Compose plugin..."):
             msg = attempt_fix_compose()
         if console:
@@ -571,7 +620,7 @@ def ensure_prereqs(state: State | None = None, console=None, cloudflared_bin: st
 def check_compose() -> CheckResult:
     if not _command_exists("docker"):
         if platform.system() == "Darwin":
-            return CheckResult("compose", "fail", True, "docker command is missing; install Docker Desktop")
+            return CheckResult("compose", "fail", True, "docker command is missing; run `rakkib auth` to install the Colima Docker backend")
         return CheckResult("compose", "fail", True, "docker command is missing")
     result = docker_run(["compose", "version"], check=False)
     if result.returncode == 0 and result.stdout.strip():
@@ -865,7 +914,15 @@ def summary_text(checks: list[CheckResult]) -> str:
 def attempt_fix_docker() -> str:
     """Attempt to install Docker via get.docker.com. Returns a message describing the result."""
     if platform.system() == "Darwin":
-        return "Automatic Docker installation is not supported on macOS. Install and start Docker Desktop, then run `docker info`."
+        brew = _macos_brew_cmd()
+        if brew is None:
+            return "Homebrew is required to install the macOS Docker backend. Rerun install.sh to bootstrap Homebrew, then run `rakkib auth`."
+        result = subprocess.run([brew, "install", *MACOS_DOCKER_PACKAGES], capture_output=True, text=True)
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
+            return f"Homebrew Docker backend install failed: {detail}"
+        start_msg = attempt_start_colima()
+        return f"Installed Colima Docker backend via Homebrew. {start_msg}"
     if platform.system() != "Linux":
         return "Automatic Docker installation is only supported on Linux."
 
@@ -908,7 +965,14 @@ def attempt_fix_docker() -> str:
 def attempt_fix_compose() -> str:
     """Install docker-compose-plugin. Returns a message describing the result."""
     if platform.system() == "Darwin":
-        return "Docker Compose v2 is provided by Docker Desktop on macOS. Update or reinstall Docker Desktop, then run `docker compose version`."
+        brew = _macos_brew_cmd()
+        if brew is None:
+            return "Homebrew is required to install Docker Compose on macOS. Rerun install.sh to bootstrap Homebrew, then run `rakkib auth`."
+        result = subprocess.run([brew, "install", "docker-compose"], capture_output=True, text=True)
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
+            return f"Docker Compose install via Homebrew failed: {detail}"
+        return "Docker Compose installed via Homebrew."
 
     # get.docker.com adds the Docker apt repo, so the plugin is available via apt.
     if _command_exists("apt-get"):

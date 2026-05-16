@@ -34,8 +34,8 @@ DOCKER_PERMISSION_HINT_LINUX = (
     "verify with `docker info`, and rerun `rakkib pull`."
 )
 DOCKER_PERMISSION_HINT_MAC = (
-    "Docker Desktop is installed, but this shell cannot access it. "
-    "Start or restart Docker Desktop, verify with `docker info`, and rerun Rakkib."
+    "Docker is installed, but this shell cannot access the macOS Docker backend. "
+    "Run `colima start`, verify with `docker info`, and rerun Rakkib."
 )
 
 

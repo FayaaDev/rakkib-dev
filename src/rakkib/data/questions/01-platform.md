@@ -171,7 +171,7 @@ These implications are not questions — record them as derived facts alongside 
 - Docker host IP reachable from containers: `172.18.0.1`
 
 **Mac:**
-- `DATA_ROOT` defaults to `$HOME/srv` (using `/srv` on Mac requires root and breaks Docker Desktop bind mounts)
+- `DATA_ROOT` defaults to `$HOME/srv` (using `/srv` on Mac requires root and can break Docker bind mounts)
 - Init system: `launchd`
 - Docker host IP reachable from containers: `host.docker.internal`
 

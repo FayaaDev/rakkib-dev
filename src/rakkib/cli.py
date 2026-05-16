@@ -22,6 +22,7 @@ from rakkib.docker import DockerError, compose_down, docker_run, is_docker_permi
 from rakkib.doctor import (
     attempt_fix_cloudflared,
     attempt_fix_docker,
+    attempt_start_colima,
     check_disk,
     check_ram,
     docker_access_commands,
@@ -106,21 +107,25 @@ def _run_auth_setup(ctx: click.Context) -> bool:
     if platform.system() == "Darwin":
         console.print("[green]macOS detected; Linux sudo/docker-group repair is not needed.[/green]")
         if shutil.which("docker") is None:
-            console.print(
-                "[red]Docker Desktop is required for local service testing. "
-                "Install and start Docker Desktop, then run `docker info`.[/red]"
-            )
-            return False
+            console.print("[dim]Installing the Colima Docker backend for headless macOS use...[/dim]")
+            message = attempt_fix_docker()
+            console.print(f"[dim]{message}[/dim]")
+            if shutil.which("docker") is None:
+                return False
         try:
             docker_run(["info"])
         except DockerError as exc:
-            console.print(
-                "[red]Docker Desktop is not reachable from this shell. "
-                "Start or restart Docker Desktop, then run `docker info`.[/red]"
-            )
-            console.print(f"[dim]{exc}[/dim]")
-            return False
-        console.print("[green]Docker Desktop is reachable by this shell.[/green]")
+            console.print(f"[dim]{attempt_start_colima()}[/dim]")
+            try:
+                docker_run(["info"])
+            except DockerError as retry_exc:
+                console.print(
+                    "[red]Docker is not reachable from this shell. "
+                    "Run `colima start`, then run `docker info`.[/red]"
+                )
+                console.print(f"[dim]{retry_exc or exc}[/dim]")
+                return False
+        console.print("[green]Docker is reachable by this shell.[/green]")
         return True
 
     if shutil.which("sudo") is None:

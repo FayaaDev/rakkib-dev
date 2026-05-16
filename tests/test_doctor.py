@@ -16,6 +16,7 @@ from rakkib.doctor import (
     attempt_fix_cloudflared,
     attempt_fix_docker,
     attempt_fix_compose,
+    attempt_start_colima,
     check_arch,
     check_cloudflared_binary,
     check_compose,
@@ -155,10 +156,10 @@ class TestCheckDocker:
 
     @patch("platform.system", return_value="Darwin")
     @patch("rakkib.doctor._command_exists", return_value=False)
-    def test_missing_on_mac_mentions_docker_desktop(self, _cmd: MagicMock, _system: MagicMock):
+    def test_missing_on_mac_points_to_rakkib_auth(self, _cmd: MagicMock, _system: MagicMock):
         result = check_docker()
         assert result.status == "fail"
-        assert "Docker Desktop" in result.message
+        assert "rakkib auth" in result.message
 
     @patch("rakkib.doctor._command_exists", return_value=True)
     @patch("rakkib.doctor.docker_run")
@@ -350,9 +351,33 @@ class TestSummaryText:
 
 class TestAttemptFixDocker:
     @patch("platform.system", return_value="Darwin")
-    def test_skips_mac(self, _mock: MagicMock):
+    @patch("rakkib.doctor.attempt_start_colima", return_value="Colima started; Docker daemon should be reachable.")
+    @patch("rakkib.doctor._macos_brew_cmd", return_value="/usr/local/bin/brew")
+    @patch("subprocess.run")
+    def test_mac_installs_colima_backend(
+        self,
+        mock_run: MagicMock,
+        _brew: MagicMock,
+        _start: MagicMock,
+        _system: MagicMock,
+    ):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         msg = attempt_fix_docker()
-        assert "Docker Desktop" in msg
+        assert "Colima Docker backend" in msg
+        assert mock_run.call_args.args[0] == [
+            "/usr/local/bin/brew",
+            "install",
+            "colima",
+            "docker",
+            "docker-compose",
+        ]
+
+    @patch("platform.system", return_value="Darwin")
+    @patch("rakkib.doctor._macos_brew_cmd", return_value=None)
+    def test_mac_without_homebrew_is_actionable(self, _brew: MagicMock, _system: MagicMock):
+        msg = attempt_fix_docker()
+        assert "Homebrew" in msg
+        assert "install.sh" in msg
 
     @patch("platform.system", return_value="Linux")
     @patch("rakkib.doctor.os.geteuid", return_value=0)
@@ -510,12 +535,25 @@ class TestDockerPermissionRepair:
         mock_execvp.assert_not_called()
 
     @patch("platform.system", return_value="Darwin")
-    def test_mac_permission_message_uses_docker_desktop(self, _system: MagicMock):
+    def test_mac_permission_message_uses_colima(self, _system: MagicMock):
         console = MagicMock()
         assert handle_docker_permission_denied(console, "tester") is False
         rendered = "\n".join(call.args[0] for call in console.print.call_args_list)
-        assert "Docker Desktop" in rendered
+        assert "colima start" in rendered
         assert "newgrp docker" not in rendered
+
+
+class TestAttemptStartColima:
+    @patch("platform.system", return_value="Darwin")
+    @patch("rakkib.doctor._macos_tool_cmd", return_value="/usr/local/bin/colima")
+    @patch("subprocess.run")
+    def test_start_success(self, mock_run: MagicMock, _tool: MagicMock, _system: MagicMock):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        msg = attempt_start_colima()
+
+        assert "Colima started" in msg
+        assert mock_run.call_args.args[0] == ["/usr/local/bin/colima", "start"]
 
 
 class TestWaitForAptLocks:
@@ -553,9 +591,18 @@ class TestWaitForAptLocks:
 
 class TestAttemptFixCompose:
     @patch("platform.system", return_value="Darwin")
-    def test_mac_compose_fix_points_to_docker_desktop(self, _system: MagicMock):
+    @patch("rakkib.doctor._macos_brew_cmd", return_value="/usr/local/bin/brew")
+    @patch("subprocess.run")
+    def test_mac_compose_installs_with_homebrew(
+        self,
+        mock_run: MagicMock,
+        _brew: MagicMock,
+        _system: MagicMock,
+    ):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         msg = attempt_fix_compose()
-        assert "Docker Desktop" in msg
+        assert "Homebrew" in msg
+        assert mock_run.call_args.args[0] == ["/usr/local/bin/brew", "install", "docker-compose"]
 
     @patch("rakkib.doctor.wait_for_apt_locks", return_value=None)
     @patch("rakkib.doctor._command_exists", return_value=True)
