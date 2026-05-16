@@ -12,6 +12,7 @@ from typing import Any
 from questionary import Choice
 from rich.console import Console
 
+from rakkib.host_platform import ensure_state_platform
 from rakkib.normalize import apply_normalize, eval_when, resolve_numeric_aliases
 from rakkib.schema import FieldDef, QuestionSchema, load_all_schemas
 from rakkib.state import State, subdomain_placeholder_key
@@ -65,6 +66,8 @@ def run_interview(state: State, questions_dir: Path | str = "questions") -> Stat
         )
         if overwrite:
             state = State({}, path=state.path)
+
+    ensure_state_platform(state)
 
     resume = 1 if state.has("confirmed") and not state.is_confirmed() else state.resume_phase()
     try:
@@ -803,12 +806,18 @@ def _record_field_value(field: FieldDef, value: Any, state: State) -> None:
     """
     if field.records:
         for record_key in field.records:
-            state.set(record_key, value)
+            state.set(record_key, _normalize_record_value(record_key, value))
     else:
-        state.set(field.id, value)
+        state.set(field.id, _normalize_record_value(field.id, value))
 
 
 def _record_dict(value_dict: dict[str, Any], state: State) -> None:
     """Record a flat dict of key-value pairs into state."""
     for key, value in value_dict.items():
-        state.set(key, value)
+        state.set(key, _normalize_record_value(key, value))
+
+
+def _normalize_record_value(record_key: str, value: Any) -> Any:
+    if record_key in {"data_root", "backup_dir"} and isinstance(value, str):
+        return os.path.expandvars(os.path.expanduser(value))
+    return value

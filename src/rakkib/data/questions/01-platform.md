@@ -16,6 +16,11 @@ writes_state:
   - docker_installed
   - host_gateway
 fields:
+  - id: platform
+    type: derived
+    source: host
+    records:
+      - platform
   - id: arch
     type: derived
     source: host
@@ -53,21 +58,6 @@ fields:
     records:
       - privilege_mode
       - privilege_strategy
-  - id: platform
-    type: single_select
-    prompt: What platform are you installing on?
-    canonical_values: [linux, mac]
-    display_labels:
-      linux: Linux (Ubuntu 24.04)
-      mac: macOS
-    disabled_values:
-      mac: soon
-    normalize: lowercase
-    aliases:
-      linux: [linux]
-      mac: [mac, macos, osx, darwin]
-    records:
-      - platform
   - id: docker_installed
     type: confirm
     prompt: Is Docker already installed and running on this machine? [Y/n]
@@ -94,7 +84,13 @@ fields:
 
 ## Instructions for the Agent
 
-Ask the user the following questions in order. Record answers into `.fss-state.yaml` under the keys specified. Do not advance to `questions/02-identity.md` until every required answer is recorded.
+Auto-detect platform from the machine and ask the user the following questions in order. Record answers into `.fss-state.yaml` under the keys specified. Do not advance to `questions/02-identity.md` until every required answer is recorded.
+
+Detect platform from the machine instead of asking for it:
+- Linux -> `linux`
+- Darwin/macOS -> `mac`
+
+If detection returns anything else, stop with an actionable unsupported-platform error.
 
 Detect `arch` from the machine instead of asking for it. Use `uname -m` and normalize as follows:
 - `x86_64` -> `amd64`
@@ -131,18 +127,7 @@ On Mac, do not perform Linux root enforcement. Record `privilege_mode: sudo` and
 
 ## Questions to Ask
 
-### Q1 — Operating System
-
-Ask: "What platform are you installing on?"
-
-Accepted answers (case-insensitive, normalize to lowercase):
-- `linux`
-
-Show Mac as `soon` in the picker, but do not allow selecting it until macOS deployment is supported.
-
-Re-ask if the user provides any other answer.
-
-### Q2 — Docker Status
+### Q1 — Docker Status
 
 Ask: "Is Docker already installed and running on this machine? [Y/n]"
 
@@ -155,7 +140,7 @@ If the user answers `n`, note that step `steps/00-prereqs.md` will handle Docker
 ## Record in .fss-state.yaml
 
 ```yaml
-platform: linux        # mac is shown as soon and is not selectable yet
+platform: linux        # or: mac, auto-detected from the host
 arch: amd64            # or: arm64, auto-detected from `uname -m`
 privilege_mode: sudo   # normal Linux flow; root only for repair/debug sessions
 privilege_strategy: on_demand  # request sudo only for specific post-confirmation actions
@@ -174,7 +159,7 @@ These implications are not questions — record them as derived facts alongside 
 - Docker host IP reachable from containers: `172.18.0.1`
 
 **Mac:**
-- `DATA_ROOT` defaults to `$HOME/srv` (using `/srv` on Mac requires root and breaks Docker Desktop bind mounts)
+- `DATA_ROOT` defaults to `$HOME/srv` (using `/srv` on Mac requires root and can break Docker bind mounts)
 - Init system: `launchd`
 - Docker host IP reachable from containers: `host.docker.internal`
 
