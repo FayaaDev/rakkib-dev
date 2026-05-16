@@ -2239,6 +2239,10 @@
   padding: 12px 0;
 }
 
+.services-marquee-column-static .magic-marquee-track {
+  animation: none;
+}
+
 .catalog-service-card {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);

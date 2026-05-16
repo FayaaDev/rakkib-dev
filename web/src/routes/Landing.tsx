@@ -120,6 +120,7 @@ function ServicesMarquee3D({
   detailLabels: { alwaysInstalled: string; runsOnHost: string; optionalApp: string }
 }) {
   const columns = distributeServices(services, 4)
+  const shouldRepeat = services.length > 6
 
   return (
     <div className="services-marquee-3d" aria-label="Animated service catalog">
@@ -127,11 +128,11 @@ function ServicesMarquee3D({
         {columns.map((column, index) => (
           <Marquee
             key={index}
-            className="services-marquee-column"
+            className={`services-marquee-column${shouldRepeat ? '' : ' services-marquee-column-static'}`}
             vertical
             reverse={index % 2 === 1}
             pauseOnHover
-            repeat={3}
+            repeat={shouldRepeat ? 3 : 1}
             style={{ '--marquee-duration': `${34 + index * 7}s` } as CSSProperties}
           >
             {column.map((item) => (
