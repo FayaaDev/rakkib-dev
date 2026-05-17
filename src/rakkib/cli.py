@@ -5,6 +5,7 @@ Commands: init, pull, update, doctor, status, add, restart, uninstall, privilege
 
 from __future__ import annotations
 
+import copy
 import os
 import platform
 import pwd
@@ -300,21 +301,38 @@ def _select_service_for_deploy(state: State, registry: dict[str, Any], service: 
     return svc
 
 
+def _restore_state(state: State, snapshot: dict[str, Any]) -> None:
+    """Restore state._data to ``snapshot`` in place, preserving object identity."""
+    state._data.clear()
+    state._data.update(snapshot)
+
+
 def _run_service_pull(state: State, state_path: Path, service: str) -> bool:
     registry = services_step._load_registry()
-    svc = _select_service_for_deploy(state, registry, service)
-    if svc is None:
-        return False
 
-    state.save(state_path)
-    if not _run_pre_service_steps(state):
-        return False
-
-    console.print(f"[bold green]Installing {service}[/bold green]")
+    snapshot = copy.deepcopy(state._data)
     try:
+        svc = _select_service_for_deploy(state, registry, service)
+        if svc is None:
+            _restore_state(state, snapshot)
+            return False
+
+        state.save(state_path)
+        if not _run_pre_service_steps(state):
+            # Pre-steps run their own console output; leave state with the
+            # recorded intent so the operator can resume after fixing the
+            # blocker without reselecting the service.
+            return False
+
+        console.print(f"[bold green]Installing {service}[/bold green]")
         services_step.run_single_service(state, service)
     except Exception as exc:
         console.print(f"[bold red]  Service {service} failed:[/bold red] {exc}")
+        _restore_state(state, snapshot)
+        try:
+            state.save(state_path)
+        except Exception as save_exc:
+            console.print(f"[bold red]  Rollback save failed:[/bold red] {save_exc}")
         return False
 
     _persist_deployed_selection(state)
@@ -341,35 +359,62 @@ def _sync_services_to_state_selection(state: State, state_path: Path) -> bool:
             console.print(f"  - {error}")
         return False
 
-    with progress_spinner("Applying service changes..."):
-        previous_state = State({
-            "foundation_services": previous_foundation,
-            "selected_services": previous_selected,
-        })
-        removal_order = [
-            svc["id"]
-            for svc in reversed(selected_service_defs(previous_state, registry))
-            if svc["id"] in (previous_ids - desired_ids)
-        ]
-        for svc_id in removal_order:
-            services_step.remove_single_service(state, svc_id)
+    snapshot = copy.deepcopy(state._data)
+    successfully_added: list[str] = []
+    added_in_progress: str | None = None
 
-        _apply_service_selection(state, registry, desired_ids)
-        services_step._generate_missing_secrets(state)
-        if _postgres_sync_needed(registry, previous_ids, desired_ids):
-            postgres_step.run(state)
+    try:
+        with progress_spinner("Applying service changes..."):
+            previous_state = State({
+                "foundation_services": previous_foundation,
+                "selected_services": previous_selected,
+            })
+            removal_order = [
+                svc["id"]
+                for svc in reversed(selected_service_defs(previous_state, registry))
+                if svc["id"] in (previous_ids - desired_ids)
+            ]
+            for svc_id in removal_order:
+                services_step.remove_single_service(state, svc_id)
 
-        added = sorted(desired_ids - previous_ids)
-        if added:
-            for svc_id in added:
-                services_step.run_single_service(state, svc_id)
-        else:
-            data_root = state.data_root
-            if caddy_enabled(state):
-                services_step._reload_caddy(data_root)
-            services_step.sync_shared_artifacts(
-                state, services_step._repo_dir(), data_root, registry
-            )
+            _apply_service_selection(state, registry, desired_ids)
+            services_step._generate_missing_secrets(state)
+            if _postgres_sync_needed(registry, previous_ids, desired_ids):
+                postgres_step.run(state)
+
+            added = sorted(desired_ids - previous_ids)
+            if added:
+                for svc_id in added:
+                    added_in_progress = svc_id
+                    services_step.run_single_service(state, svc_id)
+                    successfully_added.append(svc_id)
+                    added_in_progress = None
+            else:
+                data_root = state.data_root
+                if caddy_enabled(state):
+                    services_step._reload_caddy(data_root)
+                services_step.sync_shared_artifacts(
+                    state, services_step._repo_dir(), data_root, registry
+                )
+    except Exception as exc:
+        console.print(f"[bold red]Service sync failed:[/bold red] {exc}")
+        # Best-effort cleanup of services we created during this run.
+        cleanup_ids = list(successfully_added)
+        if added_in_progress is not None and added_in_progress not in cleanup_ids:
+            cleanup_ids.append(added_in_progress)
+        for svc_id in cleanup_ids:
+            try:
+                services_step.remove_single_service(state, svc_id)
+            except Exception as remove_exc:
+                console.print(
+                    f"[dim]  rollback: failed to remove {svc_id}: {remove_exc}[/dim]"
+                )
+        _restore_state(state, snapshot)
+        try:
+            state.save(state_path)
+        except Exception as save_exc:
+            console.print(f"[bold red]  Rollback save failed:[/bold red] {save_exc}")
+        return False
 
     _persist_deployed_selection(state)
     state.save(state_path)
