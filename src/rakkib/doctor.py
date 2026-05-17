@@ -11,7 +11,6 @@ import os
 import platform
 import shlex
 import shutil
-import struct
 import subprocess
 import sys
 import tarfile

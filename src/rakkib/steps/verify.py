@@ -8,7 +8,6 @@ from __future__ import annotations
 import re
 import stat
 from pathlib import Path
-from typing import Any
 
 from rakkib.service_catalog import caddy_enabled, cloudflare_enabled
 from rakkib.state import DEFAULT_STATE_FILE, State

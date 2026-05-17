@@ -5,7 +5,6 @@ from __future__ import annotations
 import stat
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from rakkib.state import State
 from rakkib.steps import VerificationResult

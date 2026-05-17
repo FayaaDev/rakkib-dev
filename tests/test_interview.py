@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -108,7 +105,7 @@ class TestRunInterview:
 
         state = State({"confirmed": True})
         with patch.object(state, "resume_phase", return_value=7):
-            with patch.object(state, "save") as mock_save:
+            with patch.object(state, "save"):
                 run_interview(state)
 
         mock_select.assert_called_once()

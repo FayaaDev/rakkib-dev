@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from rakkib.state import State
-from rakkib.steps import VerificationResult
 from rakkib.steps import cron as cron_step
 
 
@@ -69,14 +68,14 @@ class TestInstallCronEntry:
     def test_replaces_existing_entry(self):
         lines = ["0 0 * * * /bin/old  # MARK"]
         result = cron_step._install_cron_entry(lines, "# MARK", "0 * * * *", "/bin/new")
-        assert len([l for l in result if "# MARK" in l]) == 1
+        assert len([line for line in result if "# MARK" in line]) == 1
         assert "/bin/new" in result[-1]
         assert "/bin/old" not in result[-1]
 
     def test_does_not_duplicate(self):
         lines = ["0 0 * * * /bin/old  # MARK", "# other"]
         result = cron_step._install_cron_entry(lines, "# MARK", "0 * * * *", "/bin/new")
-        assert len([l for l in result if "# MARK" in l]) == 1
+        assert len([line for line in result if "# MARK" in line]) == 1
 
 
 class TestCrontabLines:

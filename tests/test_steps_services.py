@@ -15,7 +15,6 @@ from rakkib.docker import DockerError
 from rakkib.hooks import services as service_hooks
 from rakkib.state import State
 from rakkib.steps import selected_service_defs
-from rakkib.steps import VerificationResult
 from rakkib.steps import services as services_step
 
 

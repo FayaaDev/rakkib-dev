@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import subprocess
 import stat
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -144,7 +142,6 @@ class TestRun:
         state = _make_state(tmp_path)
         cloudflared_dir = tmp_path / "data" / "cloudflared"
         cloudflared_dir.mkdir(parents=True)
-        cert_path = cloudflared_dir / "cert.pem"
         default_cert = Path.home() / ".cloudflared" / "cert.pem"
         default_cert.parent.mkdir(parents=True, exist_ok=True)
         default_cert.write_text("cert-data")

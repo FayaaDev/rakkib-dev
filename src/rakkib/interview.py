@@ -13,7 +13,7 @@ from questionary import Choice
 from rich.console import Console
 
 from rakkib.host_platform import ensure_state_platform
-from rakkib.normalize import apply_normalize, eval_when, resolve_numeric_aliases
+from rakkib.normalize import apply_normalize, eval_when
 from rakkib.schema import FieldDef, QuestionSchema, load_all_schemas
 from rakkib.state import State, subdomain_placeholder_key
 from rakkib.service_catalog import (

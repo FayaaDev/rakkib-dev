@@ -13,10 +13,13 @@ import subprocess
 import sys
 import webbrowser
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import click
 from rich.console import Console
+
+if TYPE_CHECKING:
+    from rich.table import Table
 
 from rakkib.docker import DockerError, compose_down, docker_run, is_docker_permission_error
 from rakkib.doctor import (
@@ -70,8 +73,9 @@ console = Console()
 # ---------------------------------------------------------------------------
 
 
-def _render_doctor_table(checks: list, title: str) -> "Table":
+def _render_doctor_table(checks: list, title: str) -> Table:
     from rich.table import Table
+
     table = Table(title=title, show_header=True, header_style="bold magenta")
     table.add_column("Status", style="bold", width=6)
     table.add_column("Check", style="dim", width=20)

@@ -619,8 +619,6 @@ def run(state: State) -> None:
     auth_method, tunnel_strategy, tunnel_name, domain, ssh_subdomain = _validate_cloudflare_state(
         state
     )
-    docker_net = state.get("docker_net", "caddy_net")
-    lan_ip = state.get("lan_ip", "127.0.0.1")
     metrics_port = state.get("cloudflared_metrics_port", "20241")
 
     # 1. Confirm cloudflared CLI is installed

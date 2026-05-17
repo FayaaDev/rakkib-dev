@@ -1,6 +1,5 @@
 """Tests for rakkib.normalize."""
 
-import pytest
 
 from rakkib.normalize import apply_normalize, eval_when, resolve_numeric_aliases
 from rakkib.state import State
