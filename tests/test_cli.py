@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 
-from rakkib.cli import _build_add_choices, _postgres_sync_needed, _print_deployed_urls, cli
+from rakkib.cli import _build_add_choices, _build_remove_choices, _postgres_sync_needed, _print_deployed_urls, cli
 from rakkib.state import State
 from rakkib.web.host_auth import HostAuthStatus
 
@@ -462,6 +462,16 @@ class TestAdd:
             "  n8n [Workflow automation]"
         )
 
+    def test_remove_choices_show_only_installed_services_checked(self):
+        choices = _build_remove_choices(
+            State({"foundation_services": ["homepage"], "selected_services": ["n8n"]}),
+            self._make_registry(),
+        )
+
+        selectable = [choice for choice in choices if not choice.disabled]
+        assert [choice.value for choice in selectable] == ["homepage", "n8n"]
+        assert all(choice.checked is True for choice in selectable)
+
     def test_postgres_sync_needed_only_for_postgres_service_delta(self):
         registry = self._make_registry()
 
@@ -867,6 +877,86 @@ class TestAdd:
         mock_spinner.assert_called_once_with("Applying service changes...")
         saved_state = State.load(state_file)
         assert saved_state.get("selected_services") == ["openclaw"]
+
+    def test_remove_without_args_purges_unchecked_installed_services(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+        data_root = tmp_path / "srv"
+        state_file = repo_dir / ".fss-state.yaml"
+        state_file.write_text(
+            f"foundation_services:\n  - homepage\n  - nocodb\n"
+            f"selected_services:\n  - n8n\n"
+            f"data_root: {data_root}\n"
+        )
+
+        with (
+            patch("rakkib.cli.load_service_registry", return_value=self._make_registry()),
+            patch("rakkib.cli.prompt_checkbox", return_value=["homepage"]) as mock_prompt,
+            patch("rakkib.cli.prompt_confirm", return_value=True),
+            patch("rakkib.steps.services.remove_single_service") as mock_remove,
+            patch("rakkib.steps.services.sync_shared_artifacts") as mock_sync_artifacts,
+        ):
+            result = runner.invoke(cli, ["remove"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 0
+        assert "Will remove:" in result.output
+        assert "nocodb" in result.output
+        assert "n8n" in result.output
+        choices = mock_prompt.call_args.kwargs["choices"]
+        selectable = [choice for choice in choices if not choice.disabled]
+        assert [choice.value for choice in selectable] == ["homepage", "nocodb", "n8n"]
+        assert all(choice.checked is True for choice in selectable)
+        assert [call.args[1] for call in mock_remove.call_args_list] == ["nocodb", "n8n"]
+        mock_sync_artifacts.assert_called_once()
+
+        saved_state = State.load(state_file)
+        assert saved_state.get("foundation_services") == ["homepage"]
+        assert saved_state.get("selected_services") == []
+
+    def test_remove_without_args_exits_when_no_removable_services(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+        (repo_dir / ".fss-state.yaml").write_text("confirmed: true\n")
+
+        with (
+            patch("rakkib.cli.load_service_registry", return_value=self._make_registry()),
+            patch("rakkib.cli.prompt_checkbox") as mock_prompt,
+        ):
+            result = runner.invoke(cli, ["remove"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 0
+        assert "No removable installed services" in result.output
+        mock_prompt.assert_not_called()
+
+    def test_remove_service_argument_preserves_noninteractive_flow(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+        data_root = tmp_path / "srv"
+        state_file = repo_dir / ".fss-state.yaml"
+        state_file.write_text(
+            f"foundation_services:\n  - homepage\n"
+            f"selected_services:\n  - n8n\n"
+            f"data_root: {data_root}\n"
+        )
+
+        with (
+            patch("rakkib.cli.load_service_registry", return_value=self._make_registry()),
+            patch("rakkib.cli.prompt_checkbox") as mock_prompt,
+            patch("rakkib.steps.services.remove_single_service") as mock_remove,
+            patch("rakkib.steps.services.sync_shared_artifacts"),
+        ):
+            result = runner.invoke(cli, ["remove", "n8n", "--yes"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 0
+        mock_prompt.assert_not_called()
+        mock_remove.assert_called_once()
+        assert mock_remove.call_args.args[1] == "n8n"
+        saved_state = State.load(state_file)
+        assert saved_state.get("foundation_services") == ["homepage"]
+        assert saved_state.get("selected_services") == []
 
 
 class TestUninstallPathBlock:
