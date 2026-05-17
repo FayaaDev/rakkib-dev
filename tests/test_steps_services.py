@@ -868,6 +868,51 @@ class TestSpecialHandlers:
         assert mock_run_as_user.call_args_list[0].args[3] == ["/root/.local/bin/openclaw", "gateway", "stop"]
         assert mock_run_as_user.call_args_list[1].args[3] == ["/root/.local/bin/openclaw", "gateway", "uninstall"]
 
+    @patch("rakkib.hooks.services._run_as_user")
+    @patch("rakkib.hooks.services._run_openclaw")
+    @patch("rakkib.hooks.services._resolve_openclaw_bin")
+    @patch("rakkib.hooks.services._service_admin_user", return_value=("admin", Path("/home/admin"), 1000))
+    def test_openclaw_gateway_uninstall_purges_cli_package_and_config(
+        self,
+        _mock_user,
+        mock_resolve_bin,
+        mock_run_openclaw,
+        mock_run_as_user,
+    ):
+        mock_resolve_bin.return_value = Path("/home/admin/.local/bin/openclaw")
+        mock_run_openclaw.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_run_as_user.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        with patch("pathlib.Path.exists", return_value=False):
+            service_hooks.openclaw_gateway_uninstall(State({"admin_user": "admin"}), {}, Path("."), Path("."), Path("hook.log"), {})
+
+        assert mock_run_openclaw.call_args.args[2] == ["gateway", "uninstall"]
+        purge_cmd = mock_run_as_user.call_args.args[3]
+        purge_script = purge_cmd[-1]
+        assert purge_cmd[:2] == ["bash", "-lc"]
+        assert "npm uninstall -g openclaw" in purge_script
+        assert 'rm -f "$HOME/.local/bin/openclaw"' in purge_script
+        assert 'rm -rf "$HOME/.openclaw"' in purge_script
+
+    @patch("rakkib.hooks.services._run_as_user")
+    @patch("rakkib.hooks.services._run_openclaw")
+    @patch("rakkib.hooks.services._resolve_openclaw_bin", return_value=None)
+    @patch("rakkib.hooks.services._service_admin_user", return_value=("admin", Path("/home/admin"), 1000))
+    def test_openclaw_gateway_uninstall_purges_artifacts_even_without_cli(
+        self,
+        _mock_user,
+        _mock_resolve_bin,
+        mock_run_openclaw,
+        mock_run_as_user,
+    ):
+        mock_run_as_user.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        with patch("pathlib.Path.exists", return_value=False):
+            service_hooks.openclaw_gateway_uninstall(State({"admin_user": "admin"}), {}, Path("."), Path("."), Path("hook.log"), {})
+
+        mock_run_openclaw.assert_not_called()
+        mock_run_as_user.assert_called_once()
+
     def test_homepage_hook_writes_services_yaml(self, tmp_path):
         state = State(
             {
