@@ -348,7 +348,13 @@ def _run_service_pull(state: State, state_path: Path, service: str) -> bool:
     return True
 
 
-def _sync_services_to_state_selection(state: State, state_path: Path) -> bool:
+def _sync_services_to_state_selection(
+    state: State,
+    state_path: Path,
+    *,
+    rollback_snapshot: dict[str, Any] | None = None,
+    fallback_previous_selection: tuple[list[str], list[str]] | None = None,
+) -> bool:
     registry = services_step._load_registry()
     desired_foundation, desired_selected = _selected_service_lists(state)
     desired_ids = set(desired_foundation)
@@ -356,6 +362,8 @@ def _sync_services_to_state_selection(state: State, state_path: Path) -> bool:
 
     if state.get("deployed.exists", False):
         previous_foundation, previous_selected = _deployed_service_lists(state)
+    elif fallback_previous_selection is not None:
+        previous_foundation, previous_selected = fallback_previous_selection
     else:
         previous_foundation, previous_selected = [], []
     previous_ids = set(previous_foundation)
@@ -368,7 +376,7 @@ def _sync_services_to_state_selection(state: State, state_path: Path) -> bool:
             console.print(f"  - {error}")
         return False
 
-    snapshot = copy.deepcopy(state._data)
+    snapshot = copy.deepcopy(rollback_snapshot if rollback_snapshot is not None else state._data)
     successfully_added: list[str] = []
     added_in_progress: str | None = None
     successfully_removed: list[str] = []
@@ -1088,42 +1096,19 @@ def add(ctx: click.Context, service: str | None, service_option: str | None, yes
     else:
         console.print("[yellow]No selection changes; refreshing selected services.[/yellow]")
 
-    with progress_spinner("Applying service changes..."):
-        previous_state = State(
-            {
-                "foundation_services": list(state.get("foundation_services", []) or []),
-                "selected_services": list(state.get("selected_services", []) or []),
-            }
-        )
-        removal_order = [
-            svc["id"] for svc in reversed(selected_service_defs(previous_state, registry)) if svc["id"] in removed
-        ]
-        for svc_id in removal_order:
-            services_step.remove_single_service(state, svc_id)
+    rollback_snapshot = copy.deepcopy(state._data)
+    fallback_previous_selection = _selected_service_lists(state)
+    _apply_service_selection(state, registry, selected_ids)
+    if planned_subdomains is not None:
+        _apply_planned_subdomains(state, registry, planned_subdomains)
 
-        _apply_service_selection(state, registry, selected_ids)
-        if planned_subdomains is not None:
-            _apply_planned_subdomains(state, registry, planned_subdomains)
-        services_step._generate_missing_secrets(state)
-        state.save(state_path)
-
-        if _postgres_sync_needed(registry, old_selected, selected_ids):
-            postgres_step.run(state)
-        if service:
-            services_step.run_single_service(state, service)
-        elif added:
-            for svc_id in added:
-                services_step.run_single_service(state, svc_id)
-        else:
-            # Removals-only or no changes — reload caddy to apply route changes and sync
-            data_root = state.data_root
-            if caddy_enabled(state):
-                services_step._reload_caddy(data_root)
-            services_step.sync_shared_artifacts(
-                state, services_step._repo_dir(), data_root, services_step._load_registry()
-            )
-        _persist_deployed_selection(state)
-        state.save(state_path)
+    if not _sync_services_to_state_selection(
+        state,
+        state_path,
+        rollback_snapshot=rollback_snapshot,
+        fallback_previous_selection=fallback_previous_selection,
+    ):
+        ctx.exit(1)
 
     console.print("[bold green]Service selection synced successfully.[/bold green]")
     deployed_ids: list[str] | None = None

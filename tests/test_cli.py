@@ -766,6 +766,48 @@ class TestAdd:
         assert saved_state.get("selected_services") == ["openclaw"]
         assert saved_state.get("host_gateway") == "172.18.0.1"
 
+    def test_add_service_argument_failure_rolls_back_selection(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+        state_file = repo_dir / ".fss-state.yaml"
+        state_file.write_text(
+            "platform: linux\n"
+            "foundation_services:\n  - homepage\n"
+            "selected_services: []\n"
+            "subdomains:\n  homepage: home\n"
+            "HOMEPAGE_SUBDOMAIN: home\n"
+            "deployed:\n"
+            "  exists: true\n"
+            "  foundation_services:\n    - homepage\n"
+            "  selected_services: []\n"
+        )
+
+        with (
+            patch("rakkib.steps.services._load_registry") as mock_reg,
+            patch("rakkib.cli.prompt_checkbox") as mock_checkbox,
+            patch("rakkib.cli.prompt_confirm") as mock_confirm,
+            patch("rakkib.steps.services._generate_missing_secrets"),
+            patch("rakkib.steps.services.run_single_service") as mock_run_single,
+            patch("rakkib.steps.services.remove_single_service") as mock_remove,
+        ):
+            mock_reg.return_value = self._make_registry()
+            mock_run_single.side_effect = RuntimeError("deploy exploded")
+            result = runner.invoke(cli, ["add", "openclaw", "--yes"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 1
+        assert "Service sync failed" in result.output
+        mock_checkbox.assert_not_called()
+        mock_confirm.assert_not_called()
+        assert [call.args[1] for call in mock_remove.call_args_list] == ["openclaw"]
+
+        saved_state = State.load(state_file)
+        assert saved_state.get("foundation_services") == ["homepage"]
+        assert saved_state.get("selected_services") == []
+        assert saved_state.get("subdomains") == {"homepage": "home"}
+        assert saved_state.get("OPENCLAW_SUBDOMAIN") is None
+        assert saved_state.get("deployed.selected_services") == []
+
     def test_add_host_service_argument_skips_postgres_with_existing_db_services(self, tmp_path: Path):
         runner = CliRunner()
         repo_dir = tmp_path / "repo"
