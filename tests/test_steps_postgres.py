@@ -183,7 +183,7 @@ def test_postgres_run_sets_init_sql_permissions(tmp_path):
 
     sql_path = tmp_path / "docker" / "postgres" / "init-scripts" / "init-services.sql"
     stat = sql_path.stat()
-    assert stat.st_mode & 0o777 == 0o600
+    assert stat.st_mode & 0o777 == 0o644
 
 
 def test_postgres_run_generates_secrets(tmp_path):
