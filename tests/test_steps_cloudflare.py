@@ -138,6 +138,18 @@ class TestRun:
             with pytest.raises(RuntimeError, match="cloudflared installation failed"):
                 cloudflare.run(state)
 
+    def test_run_attempts_install_when_cloudflared_executable_is_missing(self, tmp_path):
+        state = _make_state(tmp_path)
+        with (
+            patch("rakkib.steps.cloudflare._cloudflared_bin", return_value=str(tmp_path / "missing-cloudflared")),
+            patch("rakkib.steps.cloudflare.shutil.which", return_value=None),
+            patch("rakkib.steps.cloudflare.attempt_fix_cloudflared", return_value="install failed") as mock_fix,
+        ):
+            with pytest.raises(RuntimeError, match="cloudflared installation failed"):
+                cloudflare.run(state)
+
+        mock_fix.assert_called_once()
+
     def test_run_browser_login_copies_cert(self, tmp_path):
         state = _make_state(tmp_path)
         cloudflared_dir = tmp_path / "data" / "cloudflared"
