@@ -539,6 +539,77 @@ ensure_venv_install() {
   VENV_INSTALL_IN_PROGRESS=0
 }
 
+install_agent_instruction() {
+  local source="$1"
+  local target="$2"
+  local companion_name="$3"
+  local reference="$4"
+  local managed_marker="<!-- Managed by Rakkib: agent instructions -->"
+  local footer_marker="<!-- Added by Rakkib: agent instructions -->"
+  local target_dir companion first_line=""
+
+  target_dir="$(dirname "$target")"
+  companion="${target_dir}/${companion_name}"
+  mkdir -p "$target_dir"
+
+  if [[ ! -e "$target" && ! -L "$target" ]]; then
+    cp "$source" "$target"
+    log "Installed Rakkib agent instructions at ${target}"
+    return
+  fi
+
+  if [[ -L "$target" || ! -f "$target" ]]; then
+    warn "${target} exists and is not a regular, non-symlink file; skipping Rakkib agent instructions."
+    return
+  fi
+
+  IFS= read -r first_line < "$target" || true
+  if [[ "$first_line" == "$managed_marker" ]]; then
+    if ! cmp -s "$source" "$target"; then
+      cp "$source" "$target"
+      log "Updated Rakkib agent instructions at ${target}"
+    fi
+    return
+  fi
+
+  if [[ ! -e "$companion" && ! -L "$companion" ]]; then
+    cp "$source" "$companion"
+    log "Installed Rakkib agent instructions at ${companion}"
+  else
+    first_line=""
+    if [[ -f "$companion" && ! -L "$companion" ]]; then
+      IFS= read -r first_line < "$companion" || true
+    fi
+    if [[ "$first_line" != "$managed_marker" ]]; then
+      warn "${companion} already exists and is not managed by Rakkib; skipping ${target}."
+      return
+    fi
+    if ! cmp -s "$source" "$companion"; then
+      cp "$source" "$companion"
+      log "Updated Rakkib agent instructions at ${companion}"
+    fi
+  fi
+
+  if ! grep -Fqx "$reference" "$target"; then
+    {
+      printf '\n%s\n' "$footer_marker"
+      printf '%s\n' "$reference"
+    } >> "$target"
+    log "Referenced ${companion_name} from ${target}"
+  fi
+}
+
+ensure_agent_instructions() {
+  local source="${INSTALL_DIR}/src/rakkib/data/agent-instructions/RakkibAGENTS.md"
+
+  [[ -f "$source" ]] \
+    || die "Rakkib agent instructions are missing at ${source}. Restore the Rakkib checkout and rerun install.sh."
+
+  install_agent_instruction "$source" "${HOME}/.config/opencode/AGENTS.md" "AGENTSRakkib.md" "@AGENTSRakkib.md"
+  install_agent_instruction "$source" "${HOME}/.config/AGENTS.md" "AGENTSRakkib.md" "@AGENTSRakkib.md"
+  install_agent_instruction "$source" "${HOME}/.claude/CLAUDE.md" "CLAUDERakkib.md" "@CLAUDERakkib.md"
+}
+
 ensure_shell_path() {
   local marker="# Added by Rakkib: user-local bin on PATH"
   local files=()
@@ -617,6 +688,7 @@ main() {
   ensure_python3_and_venv
   prepare_repo
   ensure_venv_install
+  ensure_agent_instructions
   ensure_shell_path
   print_next_steps
 }

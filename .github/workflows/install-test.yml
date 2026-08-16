@@ -42,5 +42,15 @@ jobs:
               touch .rakkib-install-smoke-dirty
               RAKKIB_UPDATE_MODE=skip bash ./install.sh
 
+              cmp src/rakkib/data/agent-instructions/RakkibAGENTS.md "$HOME/.config/opencode/AGENTS.md"
+              cmp src/rakkib/data/agent-instructions/RakkibAGENTS.md "$HOME/.config/AGENTS.md"
+              cmp src/rakkib/data/agent-instructions/RakkibAGENTS.md "$HOME/.claude/CLAUDE.md"
+
+              printf "%s\n" "user rules" >"$HOME/.config/opencode/AGENTS.md"
+              RAKKIB_UPDATE_MODE=skip bash ./install.sh
+              grep -Fxq "@AGENTSRakkib.md" "$HOME/.config/opencode/AGENTS.md"
+              test "$(grep -Fxc "@AGENTSRakkib.md" "$HOME/.config/opencode/AGENTS.md")" -eq 1
+              cmp src/rakkib/data/agent-instructions/RakkibAGENTS.md "$HOME/.config/opencode/AGENTSRakkib.md"
+
               /tmp/rakkib-home/.local/bin/rakkib --version
             '

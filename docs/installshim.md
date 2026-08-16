@@ -65,6 +65,8 @@ RAKKIB_REPO=git@github.com:FayaaDev/rakkib-dev.git RAKKIB_BRANCH=main bash insta
 
 Existing checkouts with the old `FayaaDev/Rakkib` origin are migrated to the public runtime repo on reinstall.
 
+The installer also adds Rakkib's device-operation rules to the current user's OpenCode and Claude configuration. Missing canonical instruction files are created directly. Existing files are preserved, receive a Rakkib-managed companion named `AGENTSRakkib.md` or `CLAUDERakkib.md`, and reference that companion once from the bottom of the canonical file.
+
 ## Validation
 
 Local regression checks:

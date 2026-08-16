@@ -33,7 +33,7 @@ def _commit_all(repo: Path, message: str) -> None:
 
 def _write_source_tree(repo: Path) -> None:
     (repo / "docs" / "public").mkdir(parents=True)
-    (repo / "src" / "rakkib").mkdir(parents=True)
+    (repo / "src" / "rakkib" / "data" / "agent-instructions").mkdir(parents=True)
     (repo / ".gitignore").write_text(".venv/\n")
     (repo / "README.md").write_text("private dev readme\n")
     (repo / "docs" / "public" / "README.md").write_text("# Public Runtime\n")
@@ -41,6 +41,9 @@ def _write_source_tree(repo: Path) -> None:
     (repo / "install.sh").write_text("#!/usr/bin/env bash\n")
     (repo / "pyproject.toml").write_text('[project]\nname = "rakkib"\n')
     (repo / "src" / "rakkib" / "__init__.py").write_text('__version__ = "0.0.0"\n')
+    (repo / "src" / "rakkib" / "data" / "agent-instructions" / "RakkibAGENTS.md").write_text(
+        "# Rakkib Rules\n"
+    )
     (repo / "tests").mkdir()
     (repo / "tests" / "internal_test.py").write_text("not public\n")
 
@@ -75,8 +78,10 @@ def test_publish_runtime_repo_syncs_allowlisted_public_snapshot(tmp_path: Path):
         "install.sh",
         "pyproject.toml",
         "src/rakkib/__init__.py",
+        "src/rakkib/data/agent-instructions/RakkibAGENTS.md",
     ]
     assert (public_clone / "README.md").read_text() == "# Public Runtime\n"
+    assert (public_clone / "src/rakkib/data/agent-instructions/RakkibAGENTS.md").read_text() == "# Rakkib Rules\n"
     assert not (public_clone / "tests" / "internal_test.py").exists()
 
     log = _run(["git", "log", "-1", "--format=%s%n%b"], public_clone).stdout

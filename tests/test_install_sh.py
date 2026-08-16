@@ -352,3 +352,119 @@ def test_removed_macos_archive_and_python_pkg_fallbacks():
     assert "prepare_repo_archive" not in install_text
     assert "codeload.github.com" not in install_text
     assert "python.org/ftp" not in install_text
+
+
+def _run_agent_instruction_install(home: Path, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+    script = _source_install(
+        f"""
+        HOME={_q(home)}
+        INSTALL_DIR={_q(REPO_ROOT)}
+        ensure_agent_instructions
+        """
+    )
+    return _run_install_script(script, tmp_path)
+
+
+def test_agent_instructions_create_missing_canonical_files(tmp_path: Path):
+    home = tmp_path / "home"
+    source = REPO_ROOT / "src/rakkib/data/agent-instructions/RakkibAGENTS.md"
+
+    result = _run_agent_instruction_install(home, tmp_path)
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    for target in (
+        home / ".config/opencode/AGENTS.md",
+        home / ".config/AGENTS.md",
+        home / ".claude/CLAUDE.md",
+    ):
+        assert target.read_bytes() == source.read_bytes()
+
+
+def test_agent_instructions_preserve_existing_files_and_add_companions(tmp_path: Path):
+    home = tmp_path / "home"
+    source = REPO_ROOT / "src/rakkib/data/agent-instructions/RakkibAGENTS.md"
+    targets = (
+        (home / ".config/opencode/AGENTS.md", "AGENTSRakkib.md", "@AGENTSRakkib.md"),
+        (home / ".config/AGENTS.md", "AGENTSRakkib.md", "@AGENTSRakkib.md"),
+        (home / ".claude/CLAUDE.md", "CLAUDERakkib.md", "@CLAUDERakkib.md"),
+    )
+    for target, _, _ in targets:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(f"user-owned {target.name}\n")
+
+    first = _run_agent_instruction_install(home, tmp_path)
+    second = _run_agent_instruction_install(home, tmp_path)
+
+    assert first.returncode == 0, first.stderr + first.stdout
+    assert second.returncode == 0, second.stderr + second.stdout
+    for target, companion_name, reference in targets:
+        content = target.read_text()
+        assert content.startswith(f"user-owned {target.name}\n")
+        assert content.count(reference) == 1
+        assert (target.parent / companion_name).read_bytes() == source.read_bytes()
+
+
+def test_agent_instructions_do_not_overwrite_foreign_companion(tmp_path: Path):
+    home = tmp_path / "home"
+    target = home / ".config/opencode/AGENTS.md"
+    companion = target.parent / "AGENTSRakkib.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("user rules\n")
+    companion.write_text("foreign companion\n")
+
+    result = _run_agent_instruction_install(home, tmp_path)
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert target.read_text() == "user rules\n"
+    assert companion.read_text() == "foreign companion\n"
+    assert "is not managed by Rakkib" in result.stderr
+
+
+def test_agent_instructions_do_not_follow_foreign_companion_symlink(tmp_path: Path):
+    home = tmp_path / "home"
+    target = home / ".config/opencode/AGENTS.md"
+    companion = target.parent / "AGENTSRakkib.md"
+    foreign_target = tmp_path / "foreign.md"
+    source = REPO_ROOT / "src/rakkib/data/agent-instructions/RakkibAGENTS.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("user rules\n")
+    foreign_target.write_bytes(source.read_bytes())
+    companion.symlink_to(foreign_target)
+
+    result = _run_agent_instruction_install(home, tmp_path)
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert target.read_text() == "user rules\n"
+    assert foreign_target.read_bytes() == source.read_bytes()
+    assert companion.is_symlink()
+    assert "is not managed by Rakkib" in result.stderr
+
+
+def test_agent_instructions_require_marker_on_first_line_for_ownership(tmp_path: Path):
+    home = tmp_path / "home"
+    target = home / ".config/opencode/AGENTS.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("user rules\n<!-- Managed by Rakkib: agent instructions -->\n")
+
+    result = _run_agent_instruction_install(home, tmp_path)
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert target.read_text().startswith("user rules\n<!-- Managed by Rakkib: agent instructions -->\n")
+    assert target.read_text().count("@AGENTSRakkib.md") == 1
+
+
+def test_agent_instructions_do_not_modify_canonical_symlink(tmp_path: Path):
+    home = tmp_path / "home"
+    target = home / ".config/opencode/AGENTS.md"
+    foreign_target = tmp_path / "foreign-agents.md"
+    target.parent.mkdir(parents=True)
+    foreign_target.write_text("external rules\n")
+    target.symlink_to(foreign_target)
+
+    result = _run_agent_instruction_install(home, tmp_path)
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert foreign_target.read_text() == "external rules\n"
+    assert target.is_symlink()
+    assert not (target.parent / "AGENTSRakkib.md").exists()
+    assert "non-symlink file" in result.stderr
