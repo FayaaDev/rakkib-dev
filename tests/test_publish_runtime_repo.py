@@ -41,9 +41,7 @@ def _write_source_tree(repo: Path) -> None:
     (repo / "install.sh").write_text("#!/usr/bin/env bash\n")
     (repo / "pyproject.toml").write_text('[project]\nname = "rakkib"\n')
     (repo / "src" / "rakkib" / "__init__.py").write_text('__version__ = "0.0.0"\n')
-    (repo / "src" / "rakkib" / "data" / "agent-instructions" / "RakkibAGENTS.md").write_text(
-        "# Rakkib Rules\n"
-    )
+    (repo / "src" / "rakkib" / "data" / "agent-instructions" / "RakkibAGENTS.md").write_text("# Rakkib Rules\n")
     (repo / "tests").mkdir()
     (repo / "tests" / "internal_test.py").write_text("not public\n")
 
