@@ -127,6 +127,81 @@ def test_update_mode_default_is_skip(tmp_path: Path):
     assert result.stdout == "skip", f"default UPDATE_MODE drifted: {result.stdout!r}"
 
 
+def test_install_dir_uses_script_checkout_when_run_from_parent(tmp_path: Path):
+    parent = tmp_path / "parent"
+    parent.mkdir()
+
+    script = f"""
+    set -euo pipefail
+    export RAKKIB_INSTALL_TEST_MODE=1
+    unset RAKKIB_DIR
+    cd {_q(parent)}
+    source {_q(REPO_ROOT / "install.sh")}
+    printf '%s' "$INSTALL_DIR"
+    """
+
+    result = _run_install_script(script, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == str(REPO_ROOT)
+
+
+def test_piped_installer_uses_default_checkout(tmp_path: Path):
+    parent = tmp_path / "parent"
+    home = tmp_path / "home"
+    parent.mkdir()
+    home.mkdir()
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["RAKKIB_INSTALL_TEST_MODE"] = "1"
+    env.pop("RAKKIB_DIR", None)
+    env.pop("SUDO_USER", None)
+    script = (REPO_ROOT / "install.sh").read_text() + '\nprintf \'%s\' "$INSTALL_DIR"\n'
+
+    result = subprocess.run(
+        ["bash"],
+        cwd=parent,
+        env=env,
+        input=script,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    expected = Path("/opt/rakkib") if os.geteuid() == 0 else home / "Rakkib"
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == str(expected)
+
+
+def test_explicit_rakkib_dir_overrides_current_checkout(tmp_path: Path):
+    install_dir = tmp_path / "custom-rakkib"
+    script = f"""
+    set -euo pipefail
+    export RAKKIB_INSTALL_TEST_MODE=1
+    export RAKKIB_DIR={_q(install_dir)}
+    source ./install.sh
+    printf '%s' "$INSTALL_DIR"
+    """
+
+    result = _run_install_script(script, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == str(install_dir)
+
+
+def test_next_steps_identifies_managed_checkout(tmp_path: Path):
+    install_dir = tmp_path / "managed-rakkib"
+    script = _source_install(
+        f"""
+        PLATFORM=linux
+        INSTALL_DIR={_q(install_dir)}
+        print_next_steps
+        """
+    )
+
+    result = _run_install_script(script, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert f"Managed checkout: {install_dir}" in result.stdout
+
+
 def test_macos_tooling_installs_clt_homebrew_and_git(tmp_path: Path):
     fakebin = tmp_path / "fakebin"
     fakebin.mkdir()

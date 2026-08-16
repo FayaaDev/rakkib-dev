@@ -75,6 +75,11 @@ detect_platform() {
 
 # Pick install directory
 SUDO_USER_HOME=""
+SCRIPT_DIR=""
+if [[ -f "${BASH_SOURCE[0]:-}" ]]; then
+  SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+fi
+
 if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
   if command_exists getent; then
     SUDO_USER_HOME="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6 || true)"
@@ -83,10 +88,12 @@ if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
   fi
 fi
 
-if [[ -z "${RAKKIB_DIR:-}" && -f "pyproject.toml" && -d ".git" ]]; then
-  INSTALL_DIR="$(pwd)"
-elif [[ -n "${RAKKIB_DIR:-}" ]]; then
+if [[ -n "${RAKKIB_DIR:-}" ]]; then
   INSTALL_DIR="${RAKKIB_DIR}"
+elif [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/pyproject.toml" && -d "${SCRIPT_DIR}/.git" ]]; then
+  INSTALL_DIR="$SCRIPT_DIR"
+elif [[ -f "pyproject.toml" && -d ".git" ]]; then
+  INSTALL_DIR="$(pwd)"
 elif [[ "${EUID:-$(id -u)}" -eq 0 && -n "$SUDO_USER_HOME" ]]; then
   INSTALL_DIR="${SUDO_USER_HOME}/Rakkib"
 elif [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
@@ -641,6 +648,7 @@ print_next_steps() {
     cat <<EOF
 
 Rakkib is installed.
+Managed checkout: ${INSTALL_DIR}
 
 Next:
   rakkib web
@@ -661,6 +669,7 @@ EOF
   cat <<EOF
 
 Rakkib is installed.
+Managed checkout: ${INSTALL_DIR}
 
 Next:
   rakkib init
