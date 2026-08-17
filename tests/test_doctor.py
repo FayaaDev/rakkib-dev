@@ -523,6 +523,28 @@ class TestDockerPermissionRepair:
             ["sg", "docker", "-c", "rakkib pull --service memos"],
         )
 
+    @patch("rakkib.doctor.os.execvp", side_effect=OSError("exec failed"))
+    @patch("rakkib.doctor.prompt_confirm", return_value=True)
+    @patch("rakkib.doctor.shutil.which", return_value="/usr/bin/sg")
+    @patch("rakkib.doctor.prepare_docker_access", return_value="Docker is ready for ubuntu.")
+    def test_resumes_init_after_group_repair(
+        self,
+        _repair: MagicMock,
+        _which: MagicMock,
+        _prompt: MagicMock,
+        mock_execvp: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+        monkeypatch.setattr(sys, "argv", ["rakkib", "init"])
+
+        assert handle_docker_permission_denied(MagicMock(), "ubuntu") is False
+
+        mock_execvp.assert_called_once_with(
+            "sg",
+            ["sg", "docker", "-c", "rakkib init --resume-after-docker-access"],
+        )
+
     @patch("rakkib.doctor.os.execvp")
     @patch("rakkib.doctor.prompt_confirm")
     @patch("rakkib.doctor.prepare_docker_access", return_value="Run `rakkib auth` from an interactive terminal.")
@@ -808,6 +830,11 @@ class TestAttemptFixCloudflared:
 
 
 class TestEnsurePrereqs:
+    def test_vergo_uses_no_font_packages(self):
+        from rakkib.doctor import VERGO_LINUX_PACKAGES
+
+        assert "fontconfig" not in VERGO_LINUX_PACKAGES
+
     def test_runs_every_runtime_prerequisite_and_skips_cloudflared_for_internal_state(self):
         state = State({"exposure_mode": "internal"})
         with (
@@ -952,6 +979,7 @@ class TestEnsurePrereqs:
 
         uid, gid = os.getuid(), os.getgid()
         assert _copy_vergo_dotfiles(tmp_path, uid, gid) is None
+        assert not (tmp_path / ".p10k.zsh").exists()
         assert _copy_vergo_dotfiles(tmp_path, uid, gid) is None
         assert not (tmp_path / ".backup-vergo").exists()
 

@@ -112,15 +112,9 @@ PACKAGE_MANAGER_SAFE_ENV = {
 }
 
 MACOS_DOCKER_PACKAGES = ("colima", "docker", "docker-compose")
-VERGO_LINUX_PACKAGES = ("zsh", "git", "curl", "eza", "zoxide", "fzf", "unzip", "fontconfig")
+VERGO_LINUX_PACKAGES = ("zsh", "git", "curl", "eza", "zoxide", "fzf", "unzip")
 VERGO_MACOS_PACKAGES = ("zsh", "git", "curl", "eza", "zoxide", "fzf")
 VERGO_COMMANDS = ("zsh", "git", "curl", "eza", "zoxide", "fzf")
-MESLO_FONT_FILES = (
-    "MesloLGS NF Regular.ttf",
-    "MesloLGS NF Bold.ttf",
-    "MesloLGS NF Italic.ttf",
-    "MesloLGS NF Bold Italic.ttf",
-)
 
 CLOUDFLARED_VERSION = "2026.3.0"
 CLOUDFLARED_SHA256 = {
@@ -480,7 +474,10 @@ def _docker_group_rerun_command() -> list[str] | None:
         return None
     if shutil.which("sg") is None or not sys.argv:
         return None
-    return ["sg", "docker", "-c", shlex.join(sys.argv)]
+    command_args = list(sys.argv)
+    if len(command_args) > 1 and command_args[1] == "init":
+        command_args.append("--resume-after-docker-access")
+    return ["sg", "docker", "-c", shlex.join(command_args)]
 
 
 def _offer_docker_group_rerun(console) -> None:
@@ -746,7 +743,6 @@ def _copy_vergo_dotfiles(home: Path, uid: int, gid: int) -> str | None:
     sources: dict[Path, Path] = {
         home / ".zshrc": data_dir / "templates" / "vergo" / f"zshrc.{suffix}.zsh.tmpl",
         home / ".zshenv": data_dir / "templates" / "vergo" / f"zshenv.{suffix}.zsh.tmpl",
-        home / ".p10k.zsh": data_dir / "files" / "vergo" / ".p10k.zsh",
     }
     if platform.system() == "Darwin":
         sources[home / ".wezterm.lua"] = data_dir / "files" / "vergo" / ".wezterm.lua"
@@ -830,43 +826,6 @@ def _copy_vergo_dotfiles(home: Path, uid: int, gid: int) -> str | None:
     return None
 
 
-def _ensure_meslo_fonts(user: str, home: Path, console=None) -> bool:
-    font_dir = home / "Library" / "Fonts" if platform.system() == "Darwin" else home / ".local" / "share" / "fonts"
-    if all((font_dir / filename).is_file() for filename in MESLO_FONT_FILES):
-        return True
-    result = _run_as_target(user, home, f"mkdir -p {shlex.quote(str(font_dir))}")
-    if result.returncode == 0:
-        for filename in MESLO_FONT_FILES:
-            destination = font_dir / filename
-            if destination.is_file():
-                continue
-            encoded = filename.replace(" ", "%20")
-            url = f"https://raw.githubusercontent.com/romkatv/powerlevel10k-media/master/{encoded}"
-            temporary = destination.with_suffix(destination.suffix + ".tmp")
-            result = _run_as_target(
-                user,
-                home,
-                f"curl -fsSL -o {shlex.quote(str(temporary))} {shlex.quote(url)} && "
-                f"mv {shlex.quote(str(temporary))} {shlex.quote(str(destination))}",
-            )
-            if result.returncode != 0:
-                break
-    if result.returncode != 0:
-        message = result.stderr.strip() or result.stdout.strip() or "unknown error"
-        if console:
-            console.print(f"[bold red]Meslo font installation failed: {message}[/bold red]")
-        return False
-    if platform.system() != "Darwin" and _command_exists("fc-cache"):
-        _run_as_target(user, home, f"fc-cache -f {shlex.quote(str(font_dir))}")
-    if not all((font_dir / filename).is_file() for filename in MESLO_FONT_FILES):
-        if console:
-            console.print(
-                "[bold red]Meslo font installation completed but the expected font files are missing.[/bold red]"
-            )
-        return False
-    return True
-
-
 def _ensure_vergo(state: State | None, console=None) -> bool:
     target = _target_user_home(state)
     if target is None:
@@ -902,20 +861,6 @@ def _ensure_vergo(state: State | None, console=None) -> bool:
             detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
             if console:
                 console.print(f"[bold red]WezTerm installation failed: {detail}[/bold red]")
-            return False
-    if not _ensure_meslo_fonts(user, home, console):
-        return False
-    zi = home / ".zi" / "bin" / "zi.zsh"
-    if not zi.is_file():
-        result = _run_as_target(
-            user, home, 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/z-shell/zi/main/zi-installer)"'
-        )
-        if result.returncode != 0 or not zi.is_file():
-            detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
-            if console:
-                console.print(
-                    f"[bold red]Zi installation failed for {user}: {detail}. Rerun `rakkib pull` after checking network access.[/bold red]"
-                )
             return False
     dotfile_error = _copy_vergo_dotfiles(home, uid, gid)
     if dotfile_error:

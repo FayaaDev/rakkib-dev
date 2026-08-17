@@ -768,8 +768,9 @@ def cli(ctx: click.Context) -> None:
 
 
 @cli.command()
+@click.option("--resume-after-docker-access", is_flag=True, hidden=True)
 @click.pass_context
-def init(ctx: click.Context) -> None:
+def init(ctx: click.Context, resume_after_docker_access: bool) -> None:
     """Gather configuration via interview and save to .fss-state.yaml.
 
     Confirmed configurations immediately install everything.
@@ -781,12 +782,17 @@ def init(ctx: click.Context) -> None:
     state = State.load(state_path)
     previous_state = State(state.to_dict(), path=state.path)
 
-    state = run_interview(state, questions_dir=repo_dir / "data" / "questions")
+    if resume_after_docker_access:
+        if not state.is_confirmed():
+            raise click.UsageError("Cannot resume initialization without a confirmed state.")
+    else:
+        state = run_interview(state, questions_dir=repo_dir / "data" / "questions")
+
+    state.save(state_path)
     if state.is_confirmed() and not ensure_prereqs(state, console=console, cloudflared_bin=_cloudflared_bin()):
         ctx.exit(1)
 
     _cleanup_previous_hosting_mode(previous_state, state)
-    state.save(state_path)
     console.print("[bold green]Interview complete. State saved to .fss-state.yaml[/bold green]")
 
     if state.is_confirmed():

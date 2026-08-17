@@ -97,6 +97,30 @@ class TestInit:
         assert events == ["prerequisites", "steps"]
         assert "Run rakkib pull to install" not in result.output
 
+    def test_init_resume_after_docker_access_skips_interview(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+        (repo_dir / ".fss-state.yaml").write_text("platform: linux\nconfirmed: true\n")
+
+        with (
+            patch("rakkib.cli.run_interview") as mock_interview,
+            patch("rakkib.cli.ensure_prereqs", return_value=True) as mock_prereqs,
+            patch("rakkib.cli._run_steps") as mock_steps,
+            patch("rakkib.cli._persist_deployed_selection") as mock_persist,
+        ):
+            result = runner.invoke(
+                cli,
+                ["init", "--resume-after-docker-access"],
+                obj={"repo_dir": repo_dir},
+            )
+
+        assert result.exit_code == 0
+        mock_interview.assert_not_called()
+        mock_prereqs.assert_called_once()
+        mock_steps.assert_called_once()
+        mock_persist.assert_called_once()
+
     def test_init_confirmed_state_exits_nonzero_when_prerequisites_fail(self, tmp_path: Path):
         runner = CliRunner()
         repo_dir = tmp_path / "repo"
@@ -119,6 +143,7 @@ class TestInit:
         mock_cleanup.assert_not_called()
         mock_steps.assert_not_called()
         mock_persist.assert_not_called()
+        assert "confirmed: true" in (repo_dir / ".fss-state.yaml").read_text()
 
     def test_init_confirmed_state_exits_nonzero_when_steps_fail(self, tmp_path: Path):
         runner = CliRunner()
