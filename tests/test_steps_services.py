@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import signal
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -664,10 +665,12 @@ class TestReloadCaddy:
 
 
 class TestSpecialHandlers:
-    @patch("rakkib.hooks.services.subprocess.run")
+    @patch("rakkib.hooks.services.subprocess.Popen")
     @patch("rakkib.hooks.services.os.geteuid", return_value=1000)
-    def test_run_as_user_injects_package_manager_safe_env(self, _mock_euid, mock_run):
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+    def test_run_as_user_injects_package_manager_safe_env(self, _mock_euid, mock_popen):
+        process = mock_popen.return_value
+        process.communicate.return_value = ("", "")
+        process.returncode = 0
 
         service_hooks._run_as_user(
             "admin",
@@ -677,26 +680,85 @@ class TestSpecialHandlers:
             extra_env={"OPENCLAW_NO_PROMPT": "1"},
         )
 
-        env = mock_run.call_args.kwargs["env"]
+        env = mock_popen.call_args.kwargs["env"]
         assert env["DEBIAN_FRONTEND"] == "noninteractive"
         assert env["APT_LISTCHANGES_FRONTEND"] == "none"
         assert env["NEEDRESTART_MODE"] == "a"
         assert env["NEEDRESTART_SUSPEND"] == "1"
         assert env["UCF_FORCE_CONFFOLD"] == "1"
         assert env["OPENCLAW_NO_PROMPT"] == "1"
+        assert mock_popen.call_args.kwargs["start_new_session"] is True
+        assert mock_popen.call_args.kwargs["stdin"] is subprocess.DEVNULL
 
-    @patch("rakkib.hooks.services.subprocess.run")
+    @patch("rakkib.hooks.services.subprocess.Popen")
+    @patch("rakkib.hooks.services.os.geteuid", return_value=1000)
+    def test_run_as_user_attaches_visible_commands_to_tty(self, _mock_euid, mock_popen):
+        process = mock_popen.return_value
+        process.communicate.return_value = (None, None)
+        process.returncode = 0
+
+        service_hooks._run_as_user("admin", Path("/home/admin"), 1000, ["installer"], attach_tty=True)
+
+        assert mock_popen.call_args.kwargs["start_new_session"] is False
+        assert mock_popen.call_args.kwargs["stdin"] is None
+        assert mock_popen.call_args.kwargs["stdout"] is None
+        assert mock_popen.call_args.kwargs["stderr"] is None
+
+    @patch("rakkib.hooks.services.subprocess.Popen")
     @patch("rakkib.hooks.services.os.geteuid", return_value=0)
-    def test_run_as_user_preserves_safe_env_when_using_sudo(self, _mock_euid, mock_run):
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+    def test_run_as_user_preserves_safe_env_when_using_sudo(self, _mock_euid, mock_popen):
+        process = mock_popen.return_value
+        process.communicate.return_value = ("", "")
+        process.returncode = 0
 
         service_hooks._run_as_user("admin", Path("/home/admin"), 1000, ["true"])
 
-        run_cmd = mock_run.call_args.args[0]
+        run_cmd = mock_popen.call_args.args[0]
         assert run_cmd[:5] == ["sudo", "-n", "-u", "admin", "-H"]
         assert "DEBIAN_FRONTEND=noninteractive" in run_cmd
         assert "NEEDRESTART_MODE=a" in run_cmd
         assert "NEEDRESTART_SUSPEND=1" in run_cmd
+
+    @patch("rakkib.hooks.services.os.killpg")
+    @patch("rakkib.hooks.services.subprocess.Popen")
+    @patch("rakkib.hooks.services.os.geteuid", return_value=1000)
+    def test_run_as_user_kills_process_group_on_timeout(self, _mock_euid, mock_popen, mock_killpg):
+        process = mock_popen.return_value
+        process.pid = 4321
+        process.communicate.side_effect = [subprocess.TimeoutExpired(["installer"], 1), ("", "")]
+
+        with pytest.raises(RuntimeError, match="timed out after 1 seconds"):
+            service_hooks._run_as_user("admin", Path("/home/admin"), 1000, ["installer"], timeout=1)
+
+        mock_killpg.assert_called_once_with(4321, signal.SIGKILL)
+
+    @patch("rakkib.hooks.services.subprocess.Popen")
+    @patch("rakkib.hooks.services.os.geteuid", return_value=1000)
+    def test_run_as_user_preserves_check_semantics(self, _mock_euid, mock_popen):
+        process = mock_popen.return_value
+        process.communicate.return_value = ("stdout", "stderr")
+        process.returncode = 2
+
+        with pytest.raises(subprocess.CalledProcessError) as exc_info:
+            service_hooks._run_as_user("admin", Path("/home/admin"), 1000, ["false"])
+
+        assert exc_info.value.stdout == "stdout"
+        assert exc_info.value.stderr == "stderr"
+
+        result = service_hooks._run_as_user("admin", Path("/home/admin"), 1000, ["false"], check=False)
+        assert result.returncode == 2
+        assert result.stdout == "stdout"
+        assert result.stderr == "stderr"
+
+    @patch("rakkib.hooks.services._run_as_service_user")
+    def test_claude_install_attaches_external_installer_to_tty(self, mock_run_as_user):
+        with (
+            patch("rakkib.hooks.services.sys.stdin.isatty", return_value=True),
+            patch("rakkib.hooks.services.sys.stderr.isatty", return_value=True),
+        ):
+            service_hooks.claude_install(State({"admin_user": "admin"}), {}, Path("."), Path("."), Path("hook.log"), {})
+
+        assert mock_run_as_user.call_args.kwargs["attach_tty"] is True
 
     @patch("rakkib.hooks.services._run_as_service_user")
     @patch("rakkib.hooks.services.shutil.which", return_value=None)
@@ -747,6 +809,57 @@ class TestSpecialHandlers:
         assert second_call[1] == Path("/home/admin/.local/bin/openclaw")
         assert second_call[2][0] == "onboard"
 
+    @patch("rakkib.hooks.services._run_openclaw")
+    @patch("rakkib.hooks.services._resolve_openclaw_bin")
+    @patch("rakkib.hooks.services._run_as_service_user")
+    @patch("rakkib.hooks.services.wait_for_apt_locks", return_value=None)
+    @patch("rakkib.hooks.services.shutil.which", return_value="/usr/bin/curl")
+    def test_openclaw_install_attaches_visible_installer_to_tty(
+        self,
+        _mock_curl,
+        _mock_wait,
+        mock_run_as_user,
+        mock_resolve_bin,
+        mock_run_openclaw,
+    ):
+        mock_resolve_bin.side_effect = [None, Path("/home/admin/.local/bin/openclaw")]
+        mock_run_as_user.return_value = MagicMock(returncode=0, stdout=None, stderr=None)
+        mock_run_openclaw.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+
+        with (
+            patch("rakkib.hooks.services._service_admin_user", return_value=("admin", Path("/home/admin"), 1000)),
+            patch("pathlib.Path.exists", return_value=False),
+            patch("rakkib.hooks.services.os.geteuid", return_value=1000),
+            patch("rakkib.hooks.services.sys.stdin.isatty", return_value=True),
+            patch("rakkib.hooks.services.sys.stderr.isatty", return_value=True),
+        ):
+            service_hooks.openclaw_install(State({"admin_user": "admin"}), {}, Path("."), Path("."), Path("hook.log"), {})
+
+        assert mock_run_as_user.call_count == 1
+        assert mock_run_as_user.call_args.kwargs["attach_tty"] is True
+
+    @patch("rakkib.hooks.services._resolve_openclaw_bin", return_value=None)
+    @patch("rakkib.hooks.services._run_as_service_user")
+    @patch("rakkib.hooks.services.wait_for_apt_locks", return_value=None)
+    @patch("rakkib.hooks.services.shutil.which", return_value="/usr/bin/curl")
+    def test_openclaw_install_fails_actionably_when_sudo_needs_tty(
+        self, _mock_curl, _mock_wait, mock_run_as_user, _mock_resolve_bin
+    ):
+        mock_run_as_user.return_value = MagicMock(
+            returncode=1,
+            stdout="Administrator privileges required; enter your password",
+            stderr="sudo: a terminal is required to read the password",
+        )
+
+        with (
+            patch("rakkib.hooks.services._service_admin_user", return_value=("admin", Path("/home/admin"), 1000)),
+            patch("rakkib.hooks.services.sys.stdin.isatty", return_value=False),
+        ):
+            with pytest.raises(RuntimeError, match=r"Run `sudo -v` in an interactive terminal"):
+                service_hooks.openclaw_install(
+                    State({"admin_user": "admin"}), {}, Path("."), Path("."), Path("hook.log"), {}
+                )
+
     @patch(
         "rakkib.hooks.services.wait_for_apt_locks",
         return_value="Timed out waiting for apt/dpkg locks: /var/lib/dpkg/lock-frontend. unattended-upgrades is running.",
@@ -762,12 +875,8 @@ class TestSpecialHandlers:
             with pytest.raises(RuntimeError, match="unattended-upgrades"):
                 service_hooks.openclaw_install(state, {}, Path("."), Path("."), Path("hook.log"), {})
 
-    @patch("rakkib.hooks.services._service_admin_user", return_value=("admin", Path("/home/admin"), 1000))
-    @patch(
-        "rakkib.hooks.services.subprocess.run",
-        side_effect=subprocess.TimeoutExpired(["openclaw", "gateway", "restart"], 1),
-    )
-    def test_openclaw_command_timeout_is_actionable(self, _mock_run, _mock_user):
+    @patch("rakkib.hooks.services._run_as_service_user", side_effect=RuntimeError("timed out after 900 seconds"))
+    def test_openclaw_command_timeout_is_actionable(self, _mock_run):
         with pytest.raises(RuntimeError, match="timed out"):
             service_hooks._run_openclaw(
                 State({"admin_user": "admin"}),

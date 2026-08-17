@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import os
 import pwd
+import signal
 import shutil
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -121,11 +123,15 @@ def _ensure_node_and_npm() -> None:
 def claude_install(ctx: HookContext, *legacy_args) -> None:
     """Install Claude Code CLI for the service user."""
     ctx = _coerce_hook_context(ctx, *legacy_args)
+    attach_tty = sys.stdin.isatty() and sys.stderr.isatty()
+    if attach_tty:
+        console.print("Installing Claude Code CLI...")
     _run_as_service_user(
         ctx.state,
         ["bash", "-lc", f"curl -fsSL '{_CLAUDE_INSTALL_URL}' | bash"],
         timeout=900,
         timeout_label="Claude install.sh",
+        attach_tty=attach_tty,
     )
 
 
@@ -251,6 +257,7 @@ def _run_as_user(
     timeout: int | None = None,
     extra_env: dict[str, str] | None = None,
     timeout_label: str | None = None,
+    attach_tty: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env.update(
@@ -286,23 +293,42 @@ def _run_as_user(
             run_cmd.extend(f"{key}={value}" for key, value in extra_env.items())
         run_cmd += command
 
+    process = subprocess.Popen(
+        run_cmd,
+        stdout=None if attach_tty else subprocess.PIPE,
+        stderr=None if attach_tty else subprocess.PIPE,
+        text=True,
+        env=env,
+        stdin=None if attach_tty else subprocess.DEVNULL,
+        start_new_session=not attach_tty,
+    )
     try:
-        return subprocess.run(
-            run_cmd,
-            capture_output=True,
-            text=True,
-            check=check,
-            env=env,
-            timeout=timeout,
-            stdin=subprocess.DEVNULL,
-        )
+        stdout, stderr = process.communicate(timeout=timeout)
     except subprocess.TimeoutExpired as exc:
+        if attach_tty:
+            process.kill()
+        else:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        process.communicate()
         label = timeout_label or " ".join(command)
         raise RuntimeError(
             f"{label} timed out after {timeout} seconds. "
             "If apt, dpkg, needrestart, Ubuntu automatic updates, or another package manager is still running, "
             "wait for it to finish and rerun the Rakkib command."
         ) from exc
+
+    result = subprocess.CompletedProcess(run_cmd, process.returncode, stdout, stderr)
+    if check and result.returncode != 0:
+        raise subprocess.CalledProcessError(
+            result.returncode,
+            run_cmd,
+            output=result.stdout,
+            stderr=result.stderr,
+        )
+    return result
 
 
 def _run_as_service_user(
@@ -313,6 +339,7 @@ def _run_as_service_user(
     timeout: int | None = None,
     extra_env: dict[str, str] | None = None,
     timeout_label: str | None = None,
+    attach_tty: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     admin_user, home_dir, user_uid = _service_admin_user(state)
     return _run_as_user(
@@ -324,6 +351,7 @@ def _run_as_service_user(
         timeout=timeout,
         extra_env=extra_env,
         timeout_label=timeout_label,
+        attach_tty=attach_tty,
     )
 
 
@@ -375,6 +403,19 @@ def _openclaw_output(result: subprocess.CompletedProcess[str]) -> str:
     if stderr:
         parts.append(f"stderr: {stderr}")
     return " | ".join(parts)
+
+
+def _openclaw_installer_needs_sudo(result: subprocess.CompletedProcess[str]) -> bool:
+    output = f"{result.stdout or ''}\n{result.stderr or ''}".lower()
+    return any(
+        marker in output
+        for marker in (
+            "administrator privileges required",
+            "a password is required",
+            "a terminal is required to read the password",
+            "no tty present and no askpass program specified",
+        )
+    )
 
 
 def _openclaw_paths(home_dir: Path) -> tuple[Path, Path]:
@@ -1158,16 +1199,39 @@ def openclaw_install(ctx: HookContext, *legacy_args) -> None:
 
     openclaw_bin = _resolve_openclaw_bin(ctx.state)
     if openclaw_bin is None:
-        with progress_spinner("Installing OpenClaw CLI..."):
+        install_command = [
+            "bash",
+            "-lc",
+            f"curl -fsSL {_OPENCLAW_INSTALL_URL} | bash -s -- --no-onboard --no-prompt",
+        ]
+        attach_tty = sys.stdin.isatty() and sys.stderr.isatty()
+        if attach_tty:
+            console.print("Installing OpenClaw CLI...")
             install = _run_as_service_user(
                 ctx.state,
-                ["bash", "-lc", f"curl -fsSL {_OPENCLAW_INSTALL_URL} | bash -s -- --no-onboard --no-prompt"],
+                install_command,
                 check=False,
                 timeout=_OPENCLAW_COMMAND_TIMEOUT,
                 extra_env={"OPENCLAW_NO_PROMPT": "1"},
                 timeout_label="OpenClaw installer",
+                attach_tty=True,
             )
+        else:
+            with progress_spinner("Installing OpenClaw CLI..."):
+                install = _run_as_service_user(
+                    ctx.state,
+                    install_command,
+                    check=False,
+                    timeout=_OPENCLAW_COMMAND_TIMEOUT,
+                    extra_env={"OPENCLAW_NO_PROMPT": "1"},
+                    timeout_label="OpenClaw installer",
+                )
         if install.returncode != 0:
+            if _openclaw_installer_needs_sudo(install):
+                raise RuntimeError(
+                    "OpenClaw needs administrator privileges to install its system prerequisites. "
+                    "Run `sudo -v` in an interactive terminal, then re-run the Rakkib command."
+                )
             raise RuntimeError(f"OpenClaw installation failed. Command output: {_openclaw_output(install)}")
         openclaw_bin = _resolve_openclaw_bin(ctx.state)
         if openclaw_bin is None:
