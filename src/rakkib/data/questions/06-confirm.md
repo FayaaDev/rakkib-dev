@@ -119,7 +119,7 @@ Accepted answers: `y` or `n`.
 
 If `n`, do not execute any step files. Clear the recorded interview settings and exit without saving answers.
 
-If `y`, set `confirmed: true` and continue to `steps/00-prereqs.md`.
+If `y`, set `confirmed: true` and continue with prerequisite installation and deployment.
 
 ---
 

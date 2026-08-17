@@ -30,9 +30,13 @@ Assume the target machine is **bare metal** — only `curl`, `git`, and `python3
 sshpass -p 'z45rdKUe' ssh -o StrictHostKeyChecking=accept-new root@174.138.183.153 'set -euo pipefail; /root/.local/bin/rakkib --help | sed -n "1,220p"'
 
 - Bare-metal install and runtime validation happen on the test server, not the dev workstation. Do not treat local tests as a substitute for fresh-server validation.
+- Never run `rakkib init`. The user performs initialization testing manually.
+- Never install Rakkib on the macOS development workstation. Do not run `install.sh`, the curl installer, or an editable/package installation of Rakkib there.
+- Do not install or configure Rakkib deployment prerequisites such as Docker or cloudflared on the macOS development workstation.
+- For installer or initialization changes, do not perform test-server installation or deployment; leave bare-metal validation to the user.
 - `192.168.0.235` (Fayaalink) is the dev workstation, not the validation target. Never run service-validation or test-server deployment workflows on `192.168.0.235`.
 - Local developer regression baseline after Python changes: run `python3 -m py_compile <changed-python-files>` and the relevant pytest target through the project venv, usually `.venv/bin/python -m pytest <target>`.
-- Install local test tooling with `python3 -m venv .venv && .venv/bin/python -m pip install -e '.[test]'` when `.venv` or pytest is missing. Keep this dev-only; do not assume pytest exists on bare-metal target hosts.
+- Use the existing project venv for local tests. If the venv or pytest is missing, report the local test as unavailable; do not install Rakkib or test dependencies on the development workstation.
 
 Solo one-line command:
 curl -fsSL https://install.rakkib.app | bash

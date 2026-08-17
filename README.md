@@ -17,8 +17,7 @@ curl -fsSL https://raw.githubusercontent.com/FayaaDev/rakkib/main/install.sh | b
 Then configure and deploy:
 
 ```bash
-rakkib init   # interview wizard — saves .fss-state.yaml
-rakkib pull   # installs prereqs, runs all setup steps
+rakkib init   # interview wizard, prerequisite installation, and deployment
 ```
 
 For a local clone:
@@ -28,14 +27,13 @@ git clone https://github.com/FayaaDev/rakkib.git
 cd rakkib
 bash install.sh
 rakkib init
-rakkib pull
 ```
 
 ## How It Works
 
 1. `install.sh` clones or updates the repo, creates a project-local venv at `<repo>/.venv`, installs the rakkib package into it, and symlinks `~/.local/bin/rakkib` onto `PATH`.
-2. `rakkib init` runs a TUI interview (phases 1–6) and saves answers to `.fss-state.yaml`. Resumable: re-running picks up from the last incomplete phase.
-3. `rakkib pull` reads the confirmed state, installs Docker and cloudflared if missing, then executes setup steps in order — each step runs and verifies before the next begins.
+2. `rakkib init` runs a TUI interview (phases 1–6), installs Docker and, for Cloudflare deployments, cloudflared if missing, saves answers to `.fss-state.yaml`, then executes each setup step and verification in order. Incomplete interviews remain resumable.
+3. `rakkib pull` reapplies prerequisites and setup steps from the confirmed state.
 4. `registry.yaml` is the service catalog. Each service entry controls templating, secrets, subdomains, and dependencies.
 5. `src/rakkib/data/steps/` contains step modules. Each has `run()` and `verify()` functions; a failed verify halts the installer.
 

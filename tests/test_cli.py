@@ -41,7 +41,10 @@ class TestInit:
             "    canonical_values: [linux, mac]\n    records: [platform]\n```\n"
         )
 
-        with patch("rakkib.cli.run_interview") as mock_run:
+        with (
+            patch("rakkib.cli.run_interview") as mock_run,
+            patch("rakkib.cli.ensure_prereqs") as mock_prereqs,
+        ):
             mock_run.return_value = State({"platform": "linux", "confirmed": False})
             result = runner.invoke(
                 cli,
@@ -53,9 +56,11 @@ class TestInit:
         assert "Rakkib init" in result.output
         assert "State is not confirmed" in result.output
         mock_run.assert_called_once()
+        mock_prereqs.assert_not_called()
 
     def test_init_confirmed_state_goes_through_interview(self, tmp_path: Path):
         runner = CliRunner()
+        events = []
         repo_dir = tmp_path / "repo"
         repo_dir.mkdir()
         questions_dir = repo_dir / "questions"
@@ -71,11 +76,13 @@ class TestInit:
 
         with (
             patch("rakkib.cli.run_interview") as mock_interview,
+            patch("rakkib.cli.ensure_prereqs", return_value=True) as mock_prereqs,
             patch("rakkib.cli._run_steps") as mock_steps,
             patch("rakkib.cli._persist_deployed_selection") as mock_persist,
         ):
             mock_interview.return_value = State({"platform": "linux", "confirmed": True})
-            mock_steps.return_value = True
+            mock_prereqs.side_effect = lambda *args, **kwargs: events.append("prerequisites") or True
+            mock_steps.side_effect = lambda *args, **kwargs: events.append("steps") or True
             result = runner.invoke(
                 cli,
                 ["init"],
@@ -84,9 +91,34 @@ class TestInit:
 
         assert result.exit_code == 0
         mock_interview.assert_called_once()
+        mock_prereqs.assert_called_once()
         mock_steps.assert_called_once()
         mock_persist.assert_called_once()
+        assert events == ["prerequisites", "steps"]
         assert "Run rakkib pull to install" not in result.output
+
+    def test_init_confirmed_state_exits_nonzero_when_prerequisites_fail(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+
+        with (
+            patch("rakkib.cli.run_interview") as mock_interview,
+            patch("rakkib.cli.ensure_prereqs", return_value=False) as mock_prereqs,
+            patch("rakkib.cli._cleanup_previous_hosting_mode") as mock_cleanup,
+            patch("rakkib.cli._run_steps") as mock_steps,
+            patch("rakkib.cli._persist_deployed_selection") as mock_persist,
+        ):
+            state = State({"platform": "linux", "confirmed": True})
+            mock_interview.return_value = state
+            result = runner.invoke(cli, ["init"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 1
+        assert mock_prereqs.call_args.args == (state,)
+        assert mock_prereqs.call_args.kwargs["cloudflared_bin"] == "cloudflared"
+        mock_cleanup.assert_not_called()
+        mock_steps.assert_not_called()
+        mock_persist.assert_not_called()
 
     def test_init_confirmed_state_exits_nonzero_when_steps_fail(self, tmp_path: Path):
         runner = CliRunner()
@@ -97,6 +129,7 @@ class TestInit:
 
         with (
             patch("rakkib.cli.run_interview") as mock_interview,
+            patch("rakkib.cli.ensure_prereqs", return_value=True),
             patch("rakkib.cli._run_steps", return_value=False) as mock_steps,
             patch("rakkib.cli._persist_deployed_selection") as mock_persist,
         ):
@@ -134,6 +167,7 @@ class TestInit:
 
         with (
             patch("rakkib.cli.run_interview") as mock_interview,
+            patch("rakkib.cli.ensure_prereqs", return_value=True),
             patch("rakkib.cli._run_steps", return_value=True),
             patch("rakkib.steps.services._load_registry", return_value=self._registry()),
             patch("rakkib.steps.services.remove_single_service") as mock_remove,
@@ -168,6 +202,7 @@ class TestInit:
 
         with (
             patch("rakkib.cli.run_interview") as mock_interview,
+            patch("rakkib.cli.ensure_prereqs", return_value=True),
             patch("rakkib.cli._run_steps", return_value=True),
             patch("rakkib.steps.services._load_registry", return_value=self._registry()),
             patch("rakkib.steps.services.remove_single_service") as mock_remove,
@@ -193,6 +228,7 @@ class TestInit:
 
         with (
             patch("rakkib.cli.run_interview") as mock_interview,
+            patch("rakkib.cli.ensure_prereqs", return_value=True),
             patch("rakkib.cli._run_steps", return_value=True),
             patch("rakkib.steps.services.remove_single_service") as mock_remove,
         ):

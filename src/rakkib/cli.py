@@ -503,7 +503,7 @@ def _cleanup_previous_hosting_mode(previous_state: State, new_state: State) -> N
     previous_state.set("deployed.foundation_services", [])
     previous_state.set("deployed.selected_services", [])
     previous_state.set("cloudflare.published_services", [])
-    console.print("[green]Previous hosting deployment removed. Run `rakkib pull` to install the new mode.[/green]")
+    console.print("[green]Previous hosting deployment removed.[/green]")
 
 
 def _postgres_sync_needed(registry: dict[str, Any], previous_ids: set[str], desired_ids: set[str]) -> bool:
@@ -782,6 +782,9 @@ def init(ctx: click.Context) -> None:
     previous_state = State(state.to_dict(), path=state.path)
 
     state = run_interview(state, questions_dir=repo_dir / "data" / "questions")
+    if state.is_confirmed() and not ensure_prereqs(state, console=console, cloudflared_bin=_cloudflared_bin()):
+        ctx.exit(1)
+
     _cleanup_previous_hosting_mode(previous_state, state)
     state.save(state_path)
     console.print("[bold green]Interview complete. State saved to .fss-state.yaml[/bold green]")

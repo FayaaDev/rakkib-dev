@@ -18,8 +18,9 @@ Then run:
 
 ```bash
 rakkib init
-rakkib pull
 ```
+
+After confirmation, `rakkib init` installs missing prerequisites and deploys the selected services. Use `rakkib pull` later to reapply the confirmed configuration.
 
 ## Update
 
