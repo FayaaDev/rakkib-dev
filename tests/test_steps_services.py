@@ -480,6 +480,45 @@ class TestRun:
 
 
 class TestRunSingleService:
+    @patch("rakkib.steps.services._publish_cloudflare_service")
+    @patch("rakkib.steps.services._reload_caddy")
+    @patch("rakkib.steps.services._render_caddy_route", return_value=True)
+    @patch("rakkib.steps.services._run_named_hooks")
+    def test_host_service_publishes_before_post_publish_hooks(
+        self, mock_hooks, _mock_render_route, mock_reload, mock_publish, tmp_path
+    ):
+        events: list[str] = []
+        mock_hooks.side_effect = lambda hook_names, *_args: events.append(f"hooks:{','.join(hook_names)}")
+        mock_reload.side_effect = lambda *_args: events.append("reload")
+        mock_publish.side_effect = lambda *_args: events.append("publish")
+        state = State(
+            {
+                "exposure_mode": "cloudflare",
+                "data_root": str(tmp_path / "srv"),
+                "domain": "example.com",
+            }
+        )
+        svc = {
+            "id": "openclaw",
+            "host_service": True,
+            "hooks": {
+                "pre_start": ["openclaw_install"],
+                "post_start": ["openclaw_gateway_restart"],
+                "post_publish": ["openclaw_wait_for_pairing"],
+            },
+        }
+
+        services_step._deploy_single_service(state, svc, tmp_path, tmp_path / "srv")
+
+        assert events == [
+            "hooks:",
+            "hooks:openclaw_install",
+            "hooks:openclaw_gateway_restart",
+            "reload",
+            "publish",
+            "hooks:openclaw_wait_for_pairing",
+        ]
+
     @patch("rakkib.steps.services._repo_dir")
     @patch("rakkib.steps.services.health_check", return_value=True)
     @patch("rakkib.steps.services.compose_up")
@@ -995,7 +1034,6 @@ class TestSpecialHandlers:
             "http://localhost:18789",
         ]
 
-    @patch("rakkib.hooks.services._openclaw_wait_for_pairing")
     @patch("rakkib.hooks.services._openclaw_gateway_healthcheck", return_value=True)
     @patch("rakkib.hooks.services._openclaw_dashboard_url", return_value="https://claw.example.com/?token=abc")
     @patch("rakkib.hooks.services._resolve_openclaw_bin", return_value=Path("/home/admin/.local/bin/openclaw"))
@@ -1006,7 +1044,6 @@ class TestSpecialHandlers:
         _mock_resolve_bin,
         _mock_dashboard_url,
         _mock_healthcheck,
-        _mock_wait_for_pairing,
     ):
         mock_run_openclaw.return_value = MagicMock(returncode=0, stdout="", stderr="")
         state = State({"admin_user": "admin"})
@@ -1014,6 +1051,15 @@ class TestSpecialHandlers:
         service_hooks.openclaw_gateway_restart(state, {}, Path("."), Path("."), Path("hook.log"), {})
 
         assert state.get("deployed.special_urls.openclaw") == "https://claw.example.com/?token=abc"
+
+    @patch("rakkib.hooks.services._openclaw_wait_for_pairing")
+    @patch("rakkib.hooks.services._resolve_openclaw_bin", return_value=Path("/home/admin/.local/bin/openclaw"))
+    def test_openclaw_pairing_hook_waits_after_gateway_setup(self, _mock_resolve_bin, mock_wait_for_pairing):
+        state = State({"admin_user": "admin"})
+
+        service_hooks.openclaw_wait_for_pairing(state, {}, Path("."), Path("."), Path("hook.log"), {})
+
+        mock_wait_for_pairing.assert_called_once_with(state, Path("/home/admin/.local/bin/openclaw"))
 
     @patch("rakkib.hooks.services._run_as_user")
     @patch("rakkib.hooks.services._resolve_openclaw_bin_for_user")

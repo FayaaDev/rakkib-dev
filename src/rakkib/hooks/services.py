@@ -1315,6 +1315,13 @@ def openclaw_gateway_restart(ctx: HookContext, *legacy_args) -> None:
         ctx.state.set("deployed.special_urls.openclaw", url)
         console.print(f"[green]  OpenClaw ready:[/green] {url}")
 
+
+def openclaw_wait_for_pairing(ctx: HookContext, *legacy_args) -> None:
+    """Wait for device pairing after OpenClaw's public route is ready."""
+    ctx = _coerce_hook_context(ctx, *legacy_args)
+    openclaw_bin = _resolve_openclaw_bin(ctx.state)
+    if openclaw_bin is None:
+        raise RuntimeError("OpenClaw pairing requested but the OpenClaw CLI is not installed for the admin user.")
     _openclaw_wait_for_pairing(ctx.state, openclaw_bin)
 
 
@@ -1355,6 +1362,10 @@ PRE_START_HOOKS = {
 POST_START_HOOKS = {
     "openclaw_gateway_restart": openclaw_gateway_restart,
     "homecinema_configure": homecinema_configure,
+}
+
+POST_PUBLISH_HOOKS = {
+    "openclaw_wait_for_pairing": openclaw_wait_for_pairing,
 }
 
 RESTART_HOOKS = {

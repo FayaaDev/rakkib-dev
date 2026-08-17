@@ -32,6 +32,7 @@ from rakkib.docker import (
 )
 from rakkib.hooks.services import (
     HookContext,
+    POST_PUBLISH_HOOKS,
     POST_RENDER_HOOKS,
     POST_START_HOOKS,
     PRE_START_HOOKS,
@@ -779,6 +780,9 @@ def _deploy_single_service(state: State, svc: dict, repo: Path, data_root: Path)
         if route_changed:
             _reload_caddy(data_root)
         _publish_cloudflare_service(state, svc)
+        _run_named_hooks(
+            hooks.get("post_publish", []), POST_PUBLISH_HOOKS, state, svc, repo, data_root, log_path, registry
+        )
         return
 
     svc_dir = data_root / "docker" / svc_id
@@ -822,6 +826,7 @@ def _deploy_single_service(state: State, svc: dict, repo: Path, data_root: Path)
 
     _run_named_hooks(hooks.get("post_start", []), POST_START_HOOKS, state, svc, repo, data_root, log_path, registry)
     _publish_cloudflare_service(state, svc)
+    _run_named_hooks(hooks.get("post_publish", []), POST_PUBLISH_HOOKS, state, svc, repo, data_root, log_path, registry)
 
 
 def _host_service_responds(svc: dict) -> bool:

@@ -384,7 +384,27 @@ def reload_container(state: State) -> None:
     data_root = state.data_root
     cloudflared_dir = data_root / "docker" / "cloudflared"
     if (cloudflared_dir / "docker-compose.yml").exists():
-        docker_run(["compose", "--project-directory", str(cloudflared_dir), "restart"], check=False)
+        docker_run(["compose", "--project-directory", str(cloudflared_dir), "restart"])
+
+
+def _wait_for_public_route(fqdn: str, svc: dict) -> bool:
+    smoke = svc.get("smoke") or {}
+    path = str(smoke.get("path") or "/")
+    if not path.startswith("/"):
+        path = f"/{path}"
+    expected_text = str(smoke.get("expected_text") or "")
+    url = f"https://{fqdn}{path}"
+
+    for _ in range(METRICS_RETRY_ATTEMPTS):
+        response = subprocess.run(
+            ["curl", "-fsS", "--max-time", "10", url],
+            capture_output=True,
+            text=True,
+        )
+        if response.returncode == 0 and (not expected_text or expected_text in response.stdout):
+            return True
+        time.sleep(METRICS_RETRY_INTERVAL_SEC)
+    return False
 
 
 def publish_service(state: State, svc: dict) -> None:
@@ -401,6 +421,8 @@ def publish_service(state: State, svc: dict) -> None:
     _set_published_service_ids(state, published)
     render_config(state)
     reload_container(state)
+    if not _wait_for_public_route(fqdn, svc):
+        raise RuntimeError(f"Cloudflare publication failed for {fqdn}: public route did not become ready")
 
 
 def unpublish_service(state: State, svc: dict, *, warn: bool = True) -> str | None:

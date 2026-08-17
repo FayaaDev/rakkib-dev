@@ -1233,6 +1233,8 @@ services:
         - openclaw_install
       post_start:
         - openclaw_gateway_restart
+      post_publish:
+        - openclaw_wait_for_pairing
       restart:
         - openclaw_gateway_restart
       remove:

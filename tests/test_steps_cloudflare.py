@@ -32,6 +32,31 @@ def _make_state(tmp_path: Path, **overrides) -> State:
     return State(defaults)
 
 
+class TestServicePublishing:
+    def test_reload_container_propagates_restart_failure(self, tmp_path):
+        state = _make_state(tmp_path)
+        cloudflared_dir = tmp_path / "docker" / "cloudflared"
+        cloudflared_dir.mkdir(parents=True)
+        (cloudflared_dir / "docker-compose.yml").write_text("services: {}\n")
+
+        with patch("rakkib.steps.cloudflare.docker_run", side_effect=RuntimeError("restart failed")):
+            with pytest.raises(RuntimeError, match="restart failed"):
+                cloudflare.reload_container(state)
+
+    def test_publish_service_requires_a_ready_public_route(self, tmp_path):
+        state = _make_state(tmp_path, subdomains={"transfer": "transfer"})
+        svc = {"id": "transfer", "subdomain_key": "transfer", "default_subdomain": "transfer"}
+
+        with (
+            patch("rakkib.steps.cloudflare.create_dns_route"),
+            patch("rakkib.steps.cloudflare.render_config"),
+            patch("rakkib.steps.cloudflare.reload_container"),
+            patch("rakkib.steps.cloudflare._wait_for_public_route", return_value=False),
+        ):
+            with pytest.raises(RuntimeError, match="Cloudflare publication failed for transfer.example.com: public route did not become ready"):
+                cloudflare.publish_service(state, svc)
+
+
 def _subprocess_side_effect(
     cloudflared_version: bool = True,
     tunnel_list_ok: bool = True,
