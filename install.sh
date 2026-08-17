@@ -73,6 +73,33 @@ detect_platform() {
   esac
 }
 
+validate_linux_release() {
+  [[ "${PLATFORM:-}" == "linux" ]] || return 0
+
+  local release_file="${1:-/etc/os-release}"
+  [[ -r "$release_file" ]] \
+    || die "Rakkib requires Ubuntu 24.x, but ${release_file} is missing or unreadable. Install Ubuntu 24.04, then rerun the installer."
+
+  local distro="" version="" key value
+  while IFS='=' read -r key value; do
+    value="${value#\"}"
+    value="${value%\"}"
+    value="${value#\'}"
+    value="${value%\'}"
+    case "$key" in
+      ID) distro="$value" ;;
+      VERSION_ID) version="$value" ;;
+    esac
+  done < "$release_file"
+
+  [[ "$distro" == "ubuntu" ]] \
+    || die "Rakkib requires Ubuntu 24.x; detected ${distro:-unknown Linux}${version:+ ${version}}. Install Ubuntu 24.04, then rerun the installer."
+  case "$version" in
+    24.*) ;;
+    *) die "Rakkib requires Ubuntu 24.x; detected Ubuntu ${version:-unknown}. Upgrade or reinstall the server with Ubuntu 24.04, then rerun the installer." ;;
+  esac
+}
+
 # Pick install directory
 SUDO_USER_HOME=""
 SCRIPT_DIR=""
@@ -692,6 +719,7 @@ main() {
   validate_repo_url "$REPO_URL"
   validate_branch "$BRANCH"
   detect_platform
+  validate_linux_release
   confirm_root
   ensure_tooling
   ensure_python3_and_venv

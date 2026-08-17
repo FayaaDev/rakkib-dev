@@ -63,6 +63,84 @@ def _source_install(extra: str = "") -> str:
     """
 
 
+class TestValidateLinuxRelease:
+    def test_accepts_ubuntu_24(self, tmp_path: Path):
+        os_release = tmp_path / "os-release"
+        os_release.write_text('ID=ubuntu\nVERSION_ID="24.04"\n')
+
+        result = _run_install_script(
+            _source_install(f"PLATFORM=linux\nvalidate_linux_release {_q(os_release)}"),
+            tmp_path,
+        )
+
+        assert result.returncode == 0, result.stderr
+
+    def test_rejects_ubuntu_22(self, tmp_path: Path):
+        os_release = tmp_path / "os-release"
+        os_release.write_text('ID=ubuntu\nVERSION_ID="22.04"\n')
+
+        result = _run_install_script(
+            _source_install(f"PLATFORM=linux\nvalidate_linux_release {_q(os_release)}"),
+            tmp_path,
+        )
+
+        assert result.returncode != 0
+        assert "requires Ubuntu 24.x" in result.stderr
+        assert "Ubuntu 22.04" in result.stderr
+
+    def test_rejects_non_ubuntu_linux(self, tmp_path: Path):
+        os_release = tmp_path / "os-release"
+        os_release.write_text('ID=debian\nVERSION_ID="12"\n')
+
+        result = _run_install_script(
+            _source_install(f"PLATFORM=linux\nvalidate_linux_release {_q(os_release)}"),
+            tmp_path,
+        )
+
+        assert result.returncode != 0
+        assert "requires Ubuntu 24.x" in result.stderr
+        assert "debian 12" in result.stderr
+
+    def test_rejects_missing_os_release(self, tmp_path: Path):
+        missing = tmp_path / "missing-os-release"
+
+        result = _run_install_script(
+            _source_install(f"PLATFORM=linux\nvalidate_linux_release {_q(missing)}"),
+            tmp_path,
+        )
+
+        assert result.returncode != 0
+        assert "missing or unreadable" in result.stderr
+        assert "Ubuntu 24.04" in result.stderr
+
+    def test_skips_release_validation_on_macos(self, tmp_path: Path):
+        missing = tmp_path / "missing-os-release"
+
+        result = _run_install_script(
+            _source_install(f"PLATFORM=mac\nvalidate_linux_release {_q(missing)}"),
+            tmp_path,
+        )
+
+        assert result.returncode == 0, result.stderr
+
+    def test_main_validates_release_before_setup(self, tmp_path: Path):
+        calls = tmp_path / "calls"
+        script = _source_install(
+            f"""
+            detect_platform() {{ PLATFORM=linux; }}
+            validate_linux_release() {{ printf '%s\n' release >> {_q(calls)}; return 1; }}
+            confirm_root() {{ printf '%s\n' root >> {_q(calls)}; }}
+            ensure_tooling() {{ printf '%s\n' tooling >> {_q(calls)}; }}
+            main
+            """
+        )
+
+        result = _run_install_script(script, tmp_path)
+
+        assert result.returncode != 0
+        assert calls.read_text() == "release\n"
+
+
 class TestValidateRepoUrl:
     def test_accepts_public_https(self, tmp_path: Path):
         for url in (
