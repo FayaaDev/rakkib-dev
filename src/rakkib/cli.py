@@ -1043,8 +1043,6 @@ def add(ctx: click.Context, service: str | None, service_option: str | None, yes
     if not state.is_confirmed() and state.get("exposure_mode") is None and not state.get("cloudflare"):
         state.set("exposure_mode", "internal")
     services_step._ensure_service_runtime_env(state)
-    if not ensure_prereqs(state, console=console, cloudflared_bin=_cloudflared_bin()):
-        ctx.exit(1)
 
     registry = services_step._load_registry()
     old_selected = set(state.get("foundation_services", []) or [])
@@ -1095,6 +1093,9 @@ def add(ctx: click.Context, service: str | None, service_option: str | None, yes
             console.print("[dim]Confirmation skipped because --yes was provided.[/dim]")
     else:
         console.print("[yellow]No selection changes; refreshing selected services.[/yellow]")
+
+    if added and not ensure_prereqs(state, console=console, cloudflared_bin=_cloudflared_bin()):
+        ctx.exit(1)
 
     rollback_snapshot = copy.deepcopy(state._data)
     fallback_previous_selection = _selected_service_lists(state)

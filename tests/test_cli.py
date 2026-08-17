@@ -609,6 +609,13 @@ class TestPull:
 
 
 class TestAdd:
+    def setup_method(self):
+        self.prereqs_patcher = patch("rakkib.cli.ensure_prereqs", return_value=True)
+        self.mock_prereqs = self.prereqs_patcher.start()
+
+    def teardown_method(self):
+        self.prereqs_patcher.stop()
+
     def _make_registry(self, extra_services=None):
         services = [
             {
@@ -715,6 +722,7 @@ class TestAdd:
         assert result.exit_code == 1
         assert "Invalid service selection" in result.output
         assert "hermes requires homepage" in result.output
+        self.mock_prereqs.assert_not_called()
 
     def test_add_no_changes_refreshes_selected_services(self, tmp_path: Path):
         runner = CliRunner()
@@ -753,6 +761,7 @@ class TestAdd:
         mock_postgres_run.assert_not_called()
         mock_sync_artifacts.assert_called_once()
         assert call_order == ["secrets", "services"]
+        self.mock_prereqs.assert_not_called()
 
         saved_state = State.load(state_file)
         assert saved_state.get("foundation_services") == ["homepage"]
@@ -842,6 +851,7 @@ class TestAdd:
         assert saved_state.get("foundation_services") == ["homepage"]
         assert saved_state.get("selected_services") == ["openclaw"]
         assert saved_state.get("host_gateway") == "172.18.0.1"
+        self.mock_prereqs.assert_called_once()
 
     def test_add_service_argument_failure_rolls_back_selection(self, tmp_path: Path):
         runner = CliRunner()
@@ -1006,6 +1016,7 @@ class TestAdd:
 
         assert result.exit_code == 1
         assert "Unknown service 'missing'" in result.output
+        self.mock_prereqs.assert_not_called()
 
     def test_add_aborts_when_not_confirmed(self, tmp_path: Path):
         runner = CliRunner()
@@ -1035,6 +1046,7 @@ class TestAdd:
         assert result.exit_code == 0
         assert "Aborted" in result.output
         mock_remove.assert_not_called()
+        self.mock_prereqs.assert_not_called()
 
         saved_state = State.load(state_file)
         assert saved_state.get("selected_services") == ["n8n"]
