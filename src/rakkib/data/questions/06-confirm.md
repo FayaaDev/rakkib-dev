@@ -21,7 +21,6 @@ reads_state:
   - tz
   - foundation_services
   - selected_services
-  - host_addons
   - subdomains
   - cloudflare.zone_in_cloudflare
   - cloudflare.auth_method
@@ -47,7 +46,6 @@ fields:
       - tz
       - foundation_services
       - selected_services
-      - host_addons
       - subdomains
       - cloudflare.zone_in_cloudflare
       - cloudflare.auth_method

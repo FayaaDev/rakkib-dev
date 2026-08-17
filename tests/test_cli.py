@@ -291,7 +291,7 @@ class TestStatus:
         assert "example.com" in result.output
         assert "nocodb" in result.output
         assert "n8n" in result.output
-        assert "vergo_terminal" in result.output
+        assert "vergo_terminal" not in result.output
 
     def test_status_reads_checkout_state_from_package_repo_dir(self, tmp_path: Path):
         runner = CliRunner()
@@ -513,6 +513,18 @@ class TestDoctor:
 
 
 class TestPull:
+    def test_pull_exits_nonzero_when_prerequisites_fail(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+        (repo_dir / ".fss-state.yaml").write_text("confirmed: true\n")
+
+        with patch("rakkib.cli.ensure_prereqs", return_value=False), patch("rakkib.cli._run_steps") as run_steps:
+            result = runner.invoke(cli, ["pull"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 1
+        run_steps.assert_not_called()
+
     def test_pull_service_allows_unconfirmed_internal_state(self, tmp_path: Path):
         runner = CliRunner()
         repo_dir = tmp_path / "repo"

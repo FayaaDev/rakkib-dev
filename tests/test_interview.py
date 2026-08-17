@@ -738,7 +738,7 @@ class TestHandleServiceCatalog:
         registry = {"services": [{"id": "n8n", "homepage": {"category": "Automation"}}]}
         empty_state.set("foundation_services", ["homepage"])
         empty_state.set("selected_services", ["n8n"])
-        empty_state.set("host_addons", [])
+        empty_state.set("host_addons", ["vergo_terminal"])
 
         with (
             patch("rakkib.interview.load_service_registry", return_value=registry),
@@ -750,6 +750,8 @@ class TestHandleServiceCatalog:
         assert choices["nocodb"].checked is False
         assert choices["homepage"].checked is True
         assert choices["n8n"].checked is True
+        assert "vergo_terminal" not in choices
+        assert empty_state.get("host_addons") == ["vergo_terminal"]
 
 
 # ---------------------------------------------------------------------------

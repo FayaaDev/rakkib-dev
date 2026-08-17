@@ -170,23 +170,20 @@ def _service_catalog_category(slug: str, registry: dict[str, Any]) -> str:
 
 def _handle_service_catalog(schema: QuestionSchema, state: State) -> None:
     """Present the service catalog as a single grouped checkbox, then
-    record foundation_services, selected_services, host_addons, and subdomains.
+    record foundation_services, selected_services, and subdomains.
 
     Uses questionary.checkbox with sectioned Choices so the user sees
-    Foundation (pre-checked), categorized services (unchecked), and Host Addons (unchecked)
-    in one prompt.
+    Foundation (pre-checked) and categorized services (unchecked) in one prompt.
     """
     catalog = schema.service_catalog or {}
 
     foundation_items = catalog.get("foundation_bundle", [])
     optional_items = catalog.get("optional_services", [])
-    host_items = catalog.get("host_addons", [])
     registry = load_service_registry()
     by_id = {svc["id"]: svc for svc in registry.get("services", [])}
     prior_foundation = set(state.get("foundation_services", []) or [])
     prior_selected = set(state.get("selected_services", []) or [])
-    prior_host_addons = set(state.get("host_addons", []) or [])
-    has_prior_selection = bool(prior_foundation or prior_selected or prior_host_addons)
+    has_prior_selection = bool(prior_foundation or prior_selected)
 
     choices: list[Choice] = []
 
@@ -225,16 +222,6 @@ def _handle_service_catalog(schema: QuestionSchema, state: State) -> None:
                 Choice(title=f"  {append_service_suffixes(label, svc)}", value=slug, checked=slug in prior_selected)
             )
 
-    if host_items:
-        choices.append(Choice(title="━━ Host Addons ━━", value="__header_host__", disabled=True))
-        for item in host_items:
-            slug = item["slug"]
-            label = item.get("label", slug)
-            svc = by_id.get(slug, {"id": slug})
-            choices.append(
-                Choice(title=f"  {append_service_suffixes(label, svc)}", value=slug, checked=slug in prior_host_addons)
-            )
-
     console.print("\n[bold]=== Service Selection ===[/bold]\n")
 
     choices.append(_exit_choice())
@@ -244,9 +231,7 @@ def _handle_service_catalog(schema: QuestionSchema, state: State) -> None:
     foundation_defaults = [item["slug"] for item in foundation_items]
     foundation_selected = [s for s in selected if s in foundation_defaults]
     optional_selected = [s for s in selected if s in {item["slug"] for item in optional_items}]
-    host_selected = [s for s in selected if s in {item["slug"] for item in host_items}]
 
-    state.set("host_addons", host_selected)
     apply_service_catalog_selection(state, registry, set(foundation_selected + optional_selected))
     if caddy_enabled(state):
         _prompt_selected_service_subdomains(state, registry, set(foundation_selected + optional_selected))

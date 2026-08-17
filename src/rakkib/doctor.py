@@ -9,11 +9,13 @@ import hashlib
 import json
 import os
 import platform
+import pwd
 import shlex
 import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -110,6 +112,15 @@ PACKAGE_MANAGER_SAFE_ENV = {
 }
 
 MACOS_DOCKER_PACKAGES = ("colima", "docker", "docker-compose")
+VERGO_LINUX_PACKAGES = ("zsh", "git", "curl", "eza", "zoxide", "fzf", "unzip", "fontconfig")
+VERGO_MACOS_PACKAGES = ("zsh", "git", "curl", "eza", "zoxide", "fzf")
+VERGO_COMMANDS = ("zsh", "git", "curl", "eza", "zoxide", "fzf")
+MESLO_FONT_FILES = (
+    "MesloLGS NF Regular.ttf",
+    "MesloLGS NF Bold.ttf",
+    "MesloLGS NF Italic.ttf",
+    "MesloLGS NF Bold Italic.ttf",
+)
 
 CLOUDFLARED_VERSION = "2026.3.0"
 CLOUDFLARED_SHA256 = {
@@ -576,9 +587,340 @@ def check_docker_prereq(state: State | None = None, console=None) -> bool:
     return True
 
 
+def _target_user_home(state: State | None) -> tuple[str, Path, int, int] | None:
+    """Return the configured operator account, including when invoked through sudo."""
+    user = resolve_user(state) or "root"
+    try:
+        account = pwd.getpwnam(user)
+    except KeyError:
+        return None
+    return user, Path(account.pw_dir), account.pw_uid, account.pw_gid
+
+
+def _install_packages(packages: tuple[str, ...], *, label: str, state: State | None = None) -> str:
+    if platform.system() == "Darwin":
+        brew = _macos_brew_cmd()
+        if brew is None:
+            return f"Homebrew is required to install {label}. Install Homebrew, then rerun `rakkib pull`."
+        target = _target_user_home(state)
+        if target is None:
+            return "Configured admin user does not exist; set a valid admin_user and rerun `rakkib pull`."
+        user, home, _uid, _gid = target
+        result = _run_as_target(user, home, shlex.join([brew, "install", *packages]))
+    elif platform.system() == "Linux":
+        if not _command_exists("apt-get"):
+            return f"Ubuntu apt-get is required to install {label}. Install it, then rerun `rakkib pull`."
+        sudo_error = _sudo_install_ready()
+        if sudo_error:
+            return sudo_error
+        lock_error = wait_for_apt_locks(on_wait=_notify_apt_wait)
+        if lock_error:
+            return lock_error
+        prefix = [] if os.geteuid() == 0 else ["sudo", "-n", "env", *[f"{k}={v}" for k, v in PACKAGE_MANAGER_SAFE_ENV.items()]]
+        update = subprocess.run([*prefix, "apt-get", "update"], capture_output=True, text=True, env=_package_manager_env())
+        if update.returncode != 0:
+            detail = update.stderr.strip() or update.stdout.strip() or "unknown error"
+            return f"apt-get update for {label} failed: {detail}"
+        result = subprocess.run(
+            [*prefix, "apt-get", "install", "-y", "-q", *packages],
+            capture_output=True,
+            text=True,
+            env=_package_manager_env(),
+        )
+    else:
+        return f"Automatic {label} installation is supported only on Ubuntu and macOS."
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
+        return f"{label} installation failed: {detail}"
+    return ""
+
+
+def _run_as_target(user: str, home: Path, command: str) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    try:
+        current_user = pwd.getpwuid(os.geteuid()).pw_name
+    except KeyError:
+        current_user = ""
+    if user != current_user:
+        if os.geteuid() == 0:
+            account = pwd.getpwnam(user)
+
+            def demote() -> None:
+                os.initgroups(user, account.pw_gid)
+                os.setgid(account.pw_gid)
+                os.setuid(account.pw_uid)
+
+            return subprocess.run(
+                ["bash", "-lc", command],
+                capture_output=True,
+                text=True,
+                env=env,
+                preexec_fn=demote,
+            )
+        if shutil.which("sudo") is None:
+            return subprocess.CompletedProcess(
+                ["bash", "-lc", command],
+                1,
+                "",
+                f"sudo is required to run this command as {user}",
+            )
+        return subprocess.run(
+            ["sudo", "-n", "-u", user, "-H", "env", f"HOME={home}", "bash", "-lc", command],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+    return subprocess.run(["bash", "-lc", command], capture_output=True, text=True, env=env)
+
+
+def _target_command_result(user: str, home: Path, command: list[str]) -> bool:
+    return _run_as_target(user, home, shlex.join(command)).returncode == 0
+
+
+def _ensure_node_npm(state: State | None = None, console=None) -> bool:
+    target = _target_user_home(state)
+    if target is None:
+        if console:
+            console.print("[bold red]Configured admin user does not exist; set a valid admin_user and rerun `rakkib pull`.[/bold red]")
+        return False
+    user, home, _uid, _gid = target
+    if all(_target_command_result(user, home, [command, "--version"]) for command in ("node", "npm")):
+        return True
+    packages = ("node",) if platform.system() == "Darwin" else ("nodejs", "npm")
+    message = _install_packages(packages, label="Node.js and npm", state=state)
+    if message:
+        if console:
+            console.print(f"[bold red]{message}[/bold red]")
+        return False
+    if all(_target_command_result(user, home, [command, "--version"]) for command in ("node", "npm")):
+        return True
+    if console:
+        console.print("[bold red]Node.js/npm installation completed but `node` and `npm` are not available on PATH.[/bold red]")
+    return False
+
+
+def _ensure_bun(state: State | None, console=None) -> bool:
+    target = _target_user_home(state)
+    if target is None:
+        if console:
+            console.print("[bold red]Configured admin user does not exist; set a valid admin_user and rerun `rakkib pull`.[/bold red]")
+        return False
+    user, home, _uid, _gid = target
+    bun = home / ".bun" / "bin" / "bun"
+    if bun.is_file() and _target_command_result(user, home, [str(bun), "--version"]):
+        return True
+    missing = tuple(command for command in ("curl", "unzip") if not _command_exists(command))
+    if missing:
+        message = _install_packages(missing, label="Bun dependencies", state=state)
+        if message:
+            if console:
+                console.print(f"[bold red]{message}[/bold red]")
+            return False
+    result = _run_as_target(user, home, "curl -fsSL https://bun.com/install | bash")
+    if result.returncode != 0 or not bun.is_file() or not _target_command_result(user, home, [str(bun), "--version"]):
+        detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
+        if console:
+            console.print(f"[bold red]Bun installation failed for {user}: {detail}. Install with `curl -fsSL https://bun.com/install | bash` and rerun.[/bold red]")
+        return False
+    return True
+
+
+def _copy_vergo_dotfiles(home: Path, uid: int, gid: int) -> str | None:
+    data_dir = Path(__file__).resolve().parent / "data"
+    suffix = "mac" if platform.system() == "Darwin" else "ubuntu"
+    sources: dict[Path, Path] = {
+        home / ".zshrc": data_dir / "templates" / "vergo" / f"zshrc.{suffix}.zsh.tmpl",
+        home / ".zshenv": data_dir / "templates" / "vergo" / f"zshenv.{suffix}.zsh.tmpl",
+        home / ".p10k.zsh": data_dir / "files" / "vergo" / ".p10k.zsh",
+    }
+    if platform.system() == "Darwin":
+        sources[home / ".wezterm.lua"] = data_dir / "files" / "vergo" / ".wezterm.lua"
+    backup_dir: Path | None = None
+    backup_root = home / ".backup-vergo"
+    backup_root_fd: int | None = None
+    backup_dir_fd: int | None = None
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    try:
+        for destination, source in sources.items():
+            if destination.is_symlink():
+                return f"VErgo managed path must not be a symlink: {destination}"
+            if not source.is_file():
+                return f"VErgo dotfile source is missing: {source}"
+            if destination.is_file() and destination.read_bytes() == source.read_bytes():
+                continue
+            if destination.exists() and backup_dir is None:
+                try:
+                    os.mkdir(backup_root, 0o700)
+                except FileExistsError:
+                    pass
+                directory_flags = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0)
+                backup_root_fd = os.open(backup_root, directory_flags)
+                backup_name = timestamp
+                suffix = 1
+                while True:
+                    try:
+                        os.mkdir(backup_name, 0o700, dir_fd=backup_root_fd)
+                        break
+                    except FileExistsError:
+                        backup_name = f"{timestamp}-{suffix}"
+                        suffix += 1
+                backup_dir_fd = os.open(backup_name, directory_flags, dir_fd=backup_root_fd)
+                backup_dir = backup_root / backup_name
+            if destination.exists():
+                flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+                source_fd = os.open(destination, flags)
+                backup_fd = os.open(
+                    destination.name,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+                    0o600,
+                    dir_fd=backup_dir_fd,
+                )
+                with os.fdopen(source_fd, "rb") as source_handle, os.fdopen(backup_fd, "wb") as backup_handle:
+                    shutil.copyfileobj(source_handle, backup_handle)
+                    source_stat = os.fstat(source_handle.fileno())
+                    os.fchmod(backup_handle.fileno(), source_stat.st_mode & 0o777)
+                    if os.geteuid() == 0:
+                        os.fchown(backup_handle.fileno(), uid, gid)
+                os.utime(
+                    destination.name,
+                    ns=(source_stat.st_atime_ns, source_stat.st_mtime_ns),
+                    dir_fd=backup_dir_fd,
+                    follow_symlinks=False,
+                )
+
+            temp_fd, temp_name = tempfile.mkstemp(prefix=".rakkib-vergo-", dir=home)
+            try:
+                with os.fdopen(temp_fd, "wb") as destination_handle, source.open("rb") as source_handle:
+                    shutil.copyfileobj(source_handle, destination_handle)
+                    destination_handle.flush()
+                    os.fsync(destination_handle.fileno())
+                    os.fchmod(destination_handle.fileno(), 0o644)
+                    if os.geteuid() == 0:
+                        os.fchown(destination_handle.fileno(), uid, gid)
+                os.replace(temp_name, destination)
+            except BaseException:
+                Path(temp_name).unlink(missing_ok=True)
+                raise
+
+        if os.geteuid() == 0 and backup_dir is not None:
+            os.fchown(backup_dir_fd, uid, gid)
+            os.fchown(backup_root_fd, uid, gid)
+    except OSError as exc:
+        return f"VErgo dotfile setup failed: {exc}"
+    finally:
+        if backup_dir_fd is not None:
+            os.close(backup_dir_fd)
+        if backup_root_fd is not None:
+            os.close(backup_root_fd)
+    return None
+
+
+def _ensure_meslo_fonts(user: str, home: Path, console=None) -> bool:
+    font_dir = home / "Library" / "Fonts" if platform.system() == "Darwin" else home / ".local" / "share" / "fonts"
+    if all((font_dir / filename).is_file() for filename in MESLO_FONT_FILES):
+        return True
+    result = _run_as_target(user, home, f"mkdir -p {shlex.quote(str(font_dir))}")
+    if result.returncode == 0:
+        for filename in MESLO_FONT_FILES:
+            destination = font_dir / filename
+            if destination.is_file():
+                continue
+            encoded = filename.replace(" ", "%20")
+            url = f"https://raw.githubusercontent.com/romkatv/powerlevel10k-media/master/{encoded}"
+            temporary = destination.with_suffix(destination.suffix + ".tmp")
+            result = _run_as_target(
+                user,
+                home,
+                f"curl -fsSL -o {shlex.quote(str(temporary))} {shlex.quote(url)} && "
+                f"mv {shlex.quote(str(temporary))} {shlex.quote(str(destination))}",
+            )
+            if result.returncode != 0:
+                break
+    if result.returncode != 0:
+        message = result.stderr.strip() or result.stdout.strip() or "unknown error"
+        if console:
+            console.print(f"[bold red]Meslo font installation failed: {message}[/bold red]")
+        return False
+    if platform.system() != "Darwin" and _command_exists("fc-cache"):
+        _run_as_target(user, home, f"fc-cache -f {shlex.quote(str(font_dir))}")
+    if not all((font_dir / filename).is_file() for filename in MESLO_FONT_FILES):
+        if console:
+            console.print("[bold red]Meslo font installation completed but the expected font files are missing.[/bold red]")
+        return False
+    return True
+
+
+def _ensure_vergo(state: State | None, console=None) -> bool:
+    target = _target_user_home(state)
+    if target is None:
+        if console:
+            console.print("[bold red]Configured admin user does not exist; set a valid admin_user and rerun `rakkib pull`.[/bold red]")
+        return False
+    user, home, uid, gid = target
+    if any(not _target_command_result(user, home, [command, "--version"]) for command in VERGO_COMMANDS):
+        packages = VERGO_MACOS_PACKAGES if platform.system() == "Darwin" else VERGO_LINUX_PACKAGES
+        message = _install_packages(packages, label="VErgo Terminal dependencies", state=state)
+        if message:
+            if console:
+                console.print(f"[bold red]{message}[/bold red]")
+            return False
+    if any(not _target_command_result(user, home, [command, "--version"]) for command in VERGO_COMMANDS):
+        if console:
+            console.print("[bold red]VErgo Terminal dependencies were installed but are not available on PATH.[/bold red]")
+        return False
+    if platform.system() == "Darwin" and not _target_command_result(user, home, ["wezterm", "--version"]):
+        brew = _macos_brew_cmd()
+        if brew is None:
+            if console:
+                console.print("[bold red]Homebrew is required to install WezTerm. Install Homebrew, then rerun `rakkib pull`.[/bold red]")
+            return False
+        result = _run_as_target(user, home, shlex.join([brew, "install", "--cask", "wezterm"]))
+        if result.returncode != 0 or not _target_command_result(user, home, ["wezterm", "--version"]):
+            detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
+            if console:
+                console.print(f"[bold red]WezTerm installation failed: {detail}[/bold red]")
+            return False
+    if not _ensure_meslo_fonts(user, home, console):
+        return False
+    zi = home / ".zi" / "bin" / "zi.zsh"
+    if not zi.is_file():
+        result = _run_as_target(user, home, "sh -c \"$(curl -fsSL https://raw.githubusercontent.com/z-shell/zi/main/zi-installer)\"")
+        if result.returncode != 0 or not zi.is_file():
+            detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
+            if console:
+                console.print(f"[bold red]Zi installation failed for {user}: {detail}. Rerun `rakkib pull` after checking network access.[/bold red]")
+            return False
+    dotfile_error = _copy_vergo_dotfiles(home, uid, gid)
+    if dotfile_error:
+        if console:
+            console.print(f"[bold red]{dotfile_error}[/bold red]")
+        return False
+    shell_check = _run_as_target(user, home, "zsh -i -c exit")
+    if shell_check.returncode != 0:
+        detail = shell_check.stderr.strip() or shell_check.stdout.strip() or "unknown error"
+        if console:
+            console.print(f"[bold red]VErgo shell verification failed for {user}: {detail}[/bold red]")
+        return False
+    if console:
+        zsh = shutil.which("zsh") or "zsh"
+        console.print(
+            f"[dim]VErgo Terminal is ready for {user}. Rakkib does not change your login shell; "
+            f"run `chsh -s {zsh}` if you want Zsh by default, or `exec zsh` for this session.[/dim]"
+        )
+    return True
+
+
 def ensure_prereqs(state: State | None = None, console=None, cloudflared_bin: str = "cloudflared") -> bool:
-    """Install host prerequisites (Docker, cloudflared) if missing."""
+    """Install and verify the runtime prerequisites required by every setup run."""
     if not check_docker_prereq(state, console=console):
+        return False
+
+    if not _ensure_node_npm(state, console):
+        return False
+    if not _ensure_bun(state, console):
+        return False
+    if not _ensure_vergo(state, console):
         return False
 
     if state is not None and not cloudflare_enabled(state):

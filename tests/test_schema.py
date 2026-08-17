@@ -164,6 +164,7 @@ def test_phase_3_service_catalog_and_rules():
     ]
 
     assert schema.rules == []
+    assert "host_addons" not in schema.service_catalog
 
     field_map = {f.id: f for f in schema.fields}
     foundation = field_map["foundation_services"]
@@ -177,6 +178,7 @@ def test_phase_3_service_catalog_and_rules():
     assert optional.records == ["selected_services"]
     assert optional.numeric_aliases["10"] == "openclaw"
     assert optional.numeric_aliases["16"] == "excalidraw"
+    assert "host_addons" not in field_map
 
     subdomain = field_map["service_subdomain"]
     assert subdomain.type == "text"

@@ -12,7 +12,6 @@ reads_state:
 writes_state:
   - foundation_services
   - selected_services
-  - host_addons
   - subdomains
 service_catalog:
   foundation_bundle:
@@ -332,10 +331,6 @@ service_catalog:
       numeric_alias: 66
       subdomain_key: null
       default_subdomain: null
-  host_addons:
-    - slug: vergo_terminal
-      label: VErgo Terminal
-      numeric_alias: 11
 fields:
   - id: foundation_services
     type: multi_select
@@ -416,15 +411,6 @@ fields:
       "66": matter-server
     records:
       - selected_services
-  - id: host_addons
-    type: multi_select
-    selection_mode: add_to_empty
-    prompt: "Host Addons: type addon slugs to add (e.g. `vergo_terminal`); numeric aliases like `11` are also accepted, or press Enter to skip all:"
-    canonical_values: [vergo_terminal]
-    numeric_aliases:
-      "11": vergo_terminal
-    records:
-      - host_addons
   - id: service_subdomain
     type: text
     repeat_for: selected_service_slugs
@@ -437,14 +423,13 @@ fields:
 
 ## Instructions for the Agent
 
-Present the full service menu below as a TUI-style checklist. Collect selections in three rounds:
+Present the full service menu below as a TUI-style checklist. Collect selections in two rounds:
 1. **Foundation Bundle** — all pre-selected; user types service slugs to deselect.
 2. **Service categories** — none pre-selected; user types service slugs to select.
-3. **Host Addons** — none pre-selected; user types addon slugs to select.
 
 Numeric checklist positions may still be accepted as convenience aliases, but canonical recorded inputs are always slugs.
 
-When rendering the checklist, the selectable label must always be the service or addon name shown below (`NocoDB`, `Homepage`, `VErgo Terminal`, etc.). Use `[✓]` and `[ ]` only as visual state markers. Do not render `selected`, `unselected`, `true`, or `false` as an option label.
+When rendering the checklist, the selectable label must always be the service name shown below (`NocoDB`, `Homepage`, etc.). Use `[✓]` and `[ ]` only as visual state markers. Do not render `selected`, `unselected`, `true`, or `false` as an option label.
 
 Subdomains are automatically set to the defaults from the service catalog for Cloudflare routing. In internal exposure mode, do not prompt for subdomains because Caddy routes are not created. Record all results into `.fss-state.yaml`. Do not advance to `questions/04-cloudflare.md` until recording is complete.
 
@@ -549,8 +534,6 @@ Documents:
   [ ] 67 Memos         — note-taking app        →  memos.<domain>
   [ ] 68 OnlyOffice    — document server        →  office.<domain>
 
-Host Addons:
-  [ ] 11 VErgo Terminal — zsh, prompt, completions, CLI UX
 ```
 
 ---
@@ -581,20 +564,6 @@ Ask:
 - If the user presses Enter with no input, none are selected.
 ---
 
-## Round 3 — Host Addons
-
-Ask:
-
-> "Host Addons: type addon slugs to add (e.g. `vergo_terminal`); numeric aliases like `11` are also accepted, or press Enter to skip all:"
-
-- Parse the response as a space-separated list of canonical addon slugs.
-- Accept the numeric aliases shown in the checklist as a convenience input and normalize them to the same canonical addon slugs before recording state.
-- `11` selects `vergo_terminal`.
-- If the user presses Enter with no input, no host addons are selected.
-- Warn before recording `vergo_terminal`: "VErgo Terminal modifies the admin user's shell dotfiles (`~/.zshrc`, `~/.zshenv`, `~/.p10k.zsh`, and on Mac `~/.wezterm.lua`). Existing files are backed up before replacement."
-
----
-
 ## Record in .fss-state.yaml
 
 ```yaml
@@ -605,8 +574,6 @@ foundation_services:
   - dockge
 selected_services:
   - n8n
-host_addons:
-  - vergo_terminal
 subdomains:
   nocodb: nocodb
   homepage: home

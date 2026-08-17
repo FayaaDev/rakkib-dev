@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from io import BytesIO
 from pathlib import Path
@@ -27,6 +28,7 @@ from rakkib.doctor import (
     check_public_ports,
     check_ram,
     check_ssh_port,
+    ensure_prereqs,
     handle_docker_permission_denied,
     process_owners_for_ports,
     run_checks,
@@ -803,6 +805,168 @@ class TestAttemptFixCloudflared:
         mock_run.return_value = MagicMock(returncode=1, stderr="network error")
         msg = attempt_fix_cloudflared()
         assert "failed" in msg
+
+
+class TestEnsurePrereqs:
+    def test_runs_every_runtime_prerequisite_and_skips_cloudflared_for_internal_state(self):
+        state = State({"exposure_mode": "internal"})
+        with (
+            patch("rakkib.doctor.check_docker_prereq", return_value=True) as docker,
+            patch("rakkib.doctor._ensure_node_npm", return_value=True) as node,
+            patch("rakkib.doctor._ensure_bun", return_value=True) as bun,
+            patch("rakkib.doctor._ensure_vergo", return_value=True) as vergo,
+            patch("rakkib.doctor.attempt_fix_cloudflared") as cloudflared,
+        ):
+            assert ensure_prereqs(state) is True
+
+        docker.assert_called_once_with(state, console=None)
+        node.assert_called_once_with(state, None)
+        bun.assert_called_once_with(state, None)
+        vergo.assert_called_once_with(state, None)
+        cloudflared.assert_not_called()
+
+    def test_stops_when_a_required_prerequisite_fails(self):
+        with (
+            patch("rakkib.doctor.check_docker_prereq", return_value=True),
+            patch("rakkib.doctor._ensure_node_npm", return_value=False),
+            patch("rakkib.doctor._ensure_bun") as bun,
+            patch("rakkib.doctor._ensure_vergo") as vergo,
+        ):
+            assert ensure_prereqs(State({"exposure_mode": "internal"})) is False
+        bun.assert_not_called()
+        vergo.assert_not_called()
+
+    def test_installs_cloudflared_after_runtime_prerequisites_when_enabled(self, tmp_path: Path):
+        local_bin = tmp_path / ".local" / "bin" / "cloudflared"
+        state = State({"exposure_mode": "cloudflare"})
+
+        def install_cloudflared():
+            local_bin.parent.mkdir(parents=True)
+            local_bin.write_text("binary")
+            return "installed"
+
+        with (
+            patch("rakkib.doctor.check_docker_prereq", return_value=True),
+            patch("rakkib.doctor._ensure_node_npm", return_value=True),
+            patch("rakkib.doctor._ensure_bun", return_value=True),
+            patch("rakkib.doctor._ensure_vergo", return_value=True),
+            patch("rakkib.doctor.Path.home", return_value=tmp_path),
+            patch("rakkib.doctor.attempt_fix_cloudflared", side_effect=install_cloudflared) as cloudflared,
+            patch(
+                "rakkib.doctor.subprocess.run",
+                side_effect=[FileNotFoundError, MagicMock(returncode=0)],
+            ),
+        ):
+            assert ensure_prereqs(state) is True
+        cloudflared.assert_called_once()
+
+    def test_bun_uses_official_installer_and_verifies_target_user_binary(self, tmp_path: Path):
+        from rakkib.doctor import _ensure_bun
+
+        bun = tmp_path / ".bun" / "bin" / "bun"
+
+        def install(_user, _home, command):
+            assert command == "curl -fsSL https://bun.com/install | bash"
+            bun.parent.mkdir(parents=True)
+            bun.write_text("binary")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        with (
+            patch("rakkib.doctor._target_user_home", return_value=("ubuntu", tmp_path, 1000, 1000)),
+            patch("rakkib.doctor._command_exists", return_value=True),
+            patch("rakkib.doctor._run_as_target", side_effect=install),
+            patch("rakkib.doctor._target_command_result", return_value=True),
+        ):
+            assert _ensure_bun(State({"admin_user": "ubuntu"})) is True
+
+    def test_node_and_npm_are_rechecked_after_install(self):
+        from rakkib.doctor import _ensure_node_npm
+
+        checks: list[list[str]] = []
+
+        def check(_user, _home, command):
+            checks.append(command)
+            return [True, False, True, True][len(checks) - 1]
+
+        with (
+            patch("rakkib.doctor._target_user_home", return_value=("admin", Path("/home/admin"), 1000, 1000)),
+            patch("rakkib.doctor._target_command_result", side_effect=check),
+            patch("rakkib.doctor._install_packages", return_value="") as install,
+        ):
+            assert _ensure_node_npm() is True
+        install.assert_called_once()
+        assert checks == [["node", "--version"], ["npm", "--version"], ["node", "--version"], ["npm", "--version"]]
+
+    @patch("platform.system", return_value="Darwin")
+    def test_macos_packages_run_as_target_user(self, _system: MagicMock, tmp_path: Path):
+        from rakkib.doctor import _install_packages
+
+        with (
+            patch("rakkib.doctor._macos_brew_cmd", return_value="/opt/homebrew/bin/brew"),
+            patch("rakkib.doctor._target_user_home", return_value=("admin", tmp_path, 501, 20)),
+            patch(
+                "rakkib.doctor._run_as_target",
+                return_value=MagicMock(returncode=0, stdout="", stderr=""),
+            ) as run,
+        ):
+            assert _install_packages(("node",), label="Node.js", state=State({"admin_user": "admin"})) == ""
+
+        run.assert_called_once_with("admin", tmp_path, "/opt/homebrew/bin/brew install node")
+
+    def test_root_runs_target_commands_without_sudo(self, tmp_path: Path):
+        from rakkib.doctor import _run_as_target
+
+        root = MagicMock(pw_name="root")
+        admin = MagicMock(pw_uid=1000, pw_gid=1000)
+        with (
+            patch("rakkib.doctor.os.geteuid", return_value=0),
+            patch("rakkib.doctor.pwd.getpwuid", return_value=root),
+            patch("rakkib.doctor.pwd.getpwnam", return_value=admin),
+            patch("rakkib.doctor.subprocess.run", return_value=MagicMock(returncode=0)) as run,
+        ):
+            assert _run_as_target("admin", tmp_path, "bun --version").returncode == 0
+
+        assert run.call_args.args[0] == ["bash", "-lc", "bun --version"]
+        assert "preexec_fn" in run.call_args.kwargs
+
+    @patch("platform.system", return_value="Linux")
+    def test_vergo_changed_dotfiles_are_backed_up_once(self, _system: MagicMock, tmp_path: Path):
+        from rakkib.doctor import _copy_vergo_dotfiles
+
+        uid, gid = os.getuid(), os.getgid()
+        assert _copy_vergo_dotfiles(tmp_path, uid, gid) is None
+        zshrc = tmp_path / ".zshrc"
+        zshrc.write_text("custom settings\n")
+        with patch("rakkib.doctor.time.strftime", return_value="20260817-051500"):
+            assert _copy_vergo_dotfiles(tmp_path, uid, gid) is None
+
+        backup = tmp_path / ".backup-vergo" / "20260817-051500"
+        assert (backup / ".zshrc").read_text() == "custom settings\n"
+        assert not (backup / ".p10k.zsh").exists()
+        assert not (tmp_path / ".wezterm.lua").exists()
+        assert (tmp_path / ".zshrc").stat().st_mode & 0o777 == 0o644
+
+    @patch("platform.system", return_value="Linux")
+    def test_vergo_unchanged_dotfiles_do_not_create_backup(self, _system: MagicMock, tmp_path: Path):
+        from rakkib.doctor import _copy_vergo_dotfiles
+
+        uid, gid = os.getuid(), os.getgid()
+        assert _copy_vergo_dotfiles(tmp_path, uid, gid) is None
+        assert _copy_vergo_dotfiles(tmp_path, uid, gid) is None
+        assert not (tmp_path / ".backup-vergo").exists()
+
+    @patch("platform.system", return_value="Linux")
+    def test_vergo_rejects_managed_symlinks(self, _system: MagicMock, tmp_path: Path):
+        from rakkib.doctor import _copy_vergo_dotfiles
+
+        target = tmp_path / "outside"
+        target.write_text("keep me\n")
+        (tmp_path / ".zshrc").symlink_to(target)
+
+        error = _copy_vergo_dotfiles(tmp_path, os.getuid(), os.getgid())
+
+        assert error is not None and "must not be a symlink" in error
+        assert target.read_text() == "keep me\n"
 
 
 class TestProcessOwnersForPorts:

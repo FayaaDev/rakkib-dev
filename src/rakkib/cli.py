@@ -823,7 +823,7 @@ def pull(ctx: click.Context, service: str | None) -> None:
         return
 
     if not ensure_prereqs(state, console=console, cloudflared_bin=_cloudflared_bin()):
-        return
+        ctx.exit(1)
 
     if service:
         ok = _run_service_pull(state, state_path, service)
@@ -1005,12 +1005,6 @@ def status(ctx: click.Context) -> None:
             console.print(f"  [cyan]{svc_id}[/cyan]  {urls[svc_id]}")
         else:
             console.print(f"  [cyan]{svc_id}[/cyan]")
-
-    host_addons = state.get("host_addons", []) or []
-    if host_addons:
-        console.rule("[bold]Host Add-ons[/bold]")
-        for addon in host_addons:
-            console.print(f"  [cyan]{addon}[/cyan]")
 
     # Available services
     console.rule("[bold]Available Services[/bold]")
