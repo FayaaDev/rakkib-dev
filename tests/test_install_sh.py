@@ -155,7 +155,7 @@ def test_piped_installer_uses_default_checkout(tmp_path: Path):
     env["RAKKIB_INSTALL_TEST_MODE"] = "1"
     env.pop("RAKKIB_DIR", None)
     env.pop("SUDO_USER", None)
-    script = (REPO_ROOT / "install.sh").read_text() + '\nprintf \'%s\' "$INSTALL_DIR"\n'
+    script = (REPO_ROOT / "install.sh").read_text() + "\nprintf '%s' \"$INSTALL_DIR\"\n"
 
     result = subprocess.run(
         ["bash"],

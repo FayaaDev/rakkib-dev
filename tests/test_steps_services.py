@@ -833,7 +833,9 @@ class TestSpecialHandlers:
             patch("rakkib.hooks.services.sys.stdin.isatty", return_value=True),
             patch("rakkib.hooks.services.sys.stderr.isatty", return_value=True),
         ):
-            service_hooks.openclaw_install(State({"admin_user": "admin"}), {}, Path("."), Path("."), Path("hook.log"), {})
+            service_hooks.openclaw_install(
+                State({"admin_user": "admin"}), {}, Path("."), Path("."), Path("hook.log"), {}
+            )
 
         assert mock_run_as_user.call_count == 1
         assert mock_run_as_user.call_args.kwargs["attach_tty"] is True

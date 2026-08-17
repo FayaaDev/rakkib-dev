@@ -616,8 +616,14 @@ def _install_packages(packages: tuple[str, ...], *, label: str, state: State | N
         lock_error = wait_for_apt_locks(on_wait=_notify_apt_wait)
         if lock_error:
             return lock_error
-        prefix = [] if os.geteuid() == 0 else ["sudo", "-n", "env", *[f"{k}={v}" for k, v in PACKAGE_MANAGER_SAFE_ENV.items()]]
-        update = subprocess.run([*prefix, "apt-get", "update"], capture_output=True, text=True, env=_package_manager_env())
+        prefix = (
+            []
+            if os.geteuid() == 0
+            else ["sudo", "-n", "env", *[f"{k}={v}" for k, v in PACKAGE_MANAGER_SAFE_ENV.items()]]
+        )
+        update = subprocess.run(
+            [*prefix, "apt-get", "update"], capture_output=True, text=True, env=_package_manager_env()
+        )
         if update.returncode != 0:
             detail = update.stderr.strip() or update.stdout.strip() or "unknown error"
             return f"apt-get update for {label} failed: {detail}"
@@ -682,7 +688,9 @@ def _ensure_node_npm(state: State | None = None, console=None) -> bool:
     target = _target_user_home(state)
     if target is None:
         if console:
-            console.print("[bold red]Configured admin user does not exist; set a valid admin_user and rerun `rakkib pull`.[/bold red]")
+            console.print(
+                "[bold red]Configured admin user does not exist; set a valid admin_user and rerun `rakkib pull`.[/bold red]"
+            )
         return False
     user, home, _uid, _gid = target
     if all(_target_command_result(user, home, [command, "--version"]) for command in ("node", "npm")):
@@ -696,7 +704,9 @@ def _ensure_node_npm(state: State | None = None, console=None) -> bool:
     if all(_target_command_result(user, home, [command, "--version"]) for command in ("node", "npm")):
         return True
     if console:
-        console.print("[bold red]Node.js/npm installation completed but `node` and `npm` are not available on PATH.[/bold red]")
+        console.print(
+            "[bold red]Node.js/npm installation completed but `node` and `npm` are not available on PATH.[/bold red]"
+        )
     return False
 
 
@@ -704,7 +714,9 @@ def _ensure_bun(state: State | None, console=None) -> bool:
     target = _target_user_home(state)
     if target is None:
         if console:
-            console.print("[bold red]Configured admin user does not exist; set a valid admin_user and rerun `rakkib pull`.[/bold red]")
+            console.print(
+                "[bold red]Configured admin user does not exist; set a valid admin_user and rerun `rakkib pull`.[/bold red]"
+            )
         return False
     user, home, _uid, _gid = target
     bun = home / ".bun" / "bin" / "bun"
@@ -721,7 +733,9 @@ def _ensure_bun(state: State | None, console=None) -> bool:
     if result.returncode != 0 or not bun.is_file() or not _target_command_result(user, home, [str(bun), "--version"]):
         detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
         if console:
-            console.print(f"[bold red]Bun installation failed for {user}: {detail}. Install with `curl -fsSL https://bun.com/install | bash` and rerun.[/bold red]")
+            console.print(
+                f"[bold red]Bun installation failed for {user}: {detail}. Install with `curl -fsSL https://bun.com/install | bash` and rerun.[/bold red]"
+            )
         return False
     return True
 
@@ -846,7 +860,9 @@ def _ensure_meslo_fonts(user: str, home: Path, console=None) -> bool:
         _run_as_target(user, home, f"fc-cache -f {shlex.quote(str(font_dir))}")
     if not all((font_dir / filename).is_file() for filename in MESLO_FONT_FILES):
         if console:
-            console.print("[bold red]Meslo font installation completed but the expected font files are missing.[/bold red]")
+            console.print(
+                "[bold red]Meslo font installation completed but the expected font files are missing.[/bold red]"
+            )
         return False
     return True
 
@@ -855,7 +871,9 @@ def _ensure_vergo(state: State | None, console=None) -> bool:
     target = _target_user_home(state)
     if target is None:
         if console:
-            console.print("[bold red]Configured admin user does not exist; set a valid admin_user and rerun `rakkib pull`.[/bold red]")
+            console.print(
+                "[bold red]Configured admin user does not exist; set a valid admin_user and rerun `rakkib pull`.[/bold red]"
+            )
         return False
     user, home, uid, gid = target
     if any(not _target_command_result(user, home, [command, "--version"]) for command in VERGO_COMMANDS):
@@ -867,13 +885,17 @@ def _ensure_vergo(state: State | None, console=None) -> bool:
             return False
     if any(not _target_command_result(user, home, [command, "--version"]) for command in VERGO_COMMANDS):
         if console:
-            console.print("[bold red]VErgo Terminal dependencies were installed but are not available on PATH.[/bold red]")
+            console.print(
+                "[bold red]VErgo Terminal dependencies were installed but are not available on PATH.[/bold red]"
+            )
         return False
     if platform.system() == "Darwin" and not _target_command_result(user, home, ["wezterm", "--version"]):
         brew = _macos_brew_cmd()
         if brew is None:
             if console:
-                console.print("[bold red]Homebrew is required to install WezTerm. Install Homebrew, then rerun `rakkib pull`.[/bold red]")
+                console.print(
+                    "[bold red]Homebrew is required to install WezTerm. Install Homebrew, then rerun `rakkib pull`.[/bold red]"
+                )
             return False
         result = _run_as_target(user, home, shlex.join([brew, "install", "--cask", "wezterm"]))
         if result.returncode != 0 or not _target_command_result(user, home, ["wezterm", "--version"]):
@@ -885,11 +907,15 @@ def _ensure_vergo(state: State | None, console=None) -> bool:
         return False
     zi = home / ".zi" / "bin" / "zi.zsh"
     if not zi.is_file():
-        result = _run_as_target(user, home, "sh -c \"$(curl -fsSL https://raw.githubusercontent.com/z-shell/zi/main/zi-installer)\"")
+        result = _run_as_target(
+            user, home, 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/z-shell/zi/main/zi-installer)"'
+        )
         if result.returncode != 0 or not zi.is_file():
             detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
             if console:
-                console.print(f"[bold red]Zi installation failed for {user}: {detail}. Rerun `rakkib pull` after checking network access.[/bold red]")
+                console.print(
+                    f"[bold red]Zi installation failed for {user}: {detail}. Rerun `rakkib pull` after checking network access.[/bold red]"
+                )
             return False
     dotfile_error = _copy_vergo_dotfiles(home, uid, gid)
     if dotfile_error:
