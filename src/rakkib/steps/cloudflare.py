@@ -395,14 +395,97 @@ def _wait_for_public_route(fqdn: str, svc: dict) -> bool:
     expected_text = str(smoke.get("expected_text") or "")
     url = f"https://{fqdn}{path}"
 
+    def _response_has_expected_text(response: subprocess.CompletedProcess[str]) -> bool:
+        return response.returncode == 0 and (not expected_text or expected_text in response.stdout)
+
+    def _probe_public_route(resolve_target: str | None = None) -> bool:
+        if resolve_target is None:
+            cmd = ["curl", "-fsS", "--max-time", "10", url]
+        else:
+            cmd = [
+                "curl",
+                "-fsS",
+                "--max-time",
+                "10",
+                "--resolve",
+                resolve_target,
+                url,
+            ]
+
+        try:
+            response = subprocess.run(cmd, capture_output=True, text=True)
+        except OSError:
+            return False
+        return _response_has_expected_text(response)
+
+    def _public_dns_ips(hostname: str) -> list[str]:
+        if not hostname:
+            return []
+
+        queries = [
+            ("1.1.1.1", "A"),
+            ("1.1.1.1", "AAAA"),
+        ]
+        ips: list[str] = []
+        for nameserver, record_type in queries:
+            dns_url = f"https://cloudflare-dns.com/dns-query?name={hostname}&type={record_type}"
+            try:
+                response = subprocess.run(
+                    [
+                        "curl",
+                        "-fsS",
+                        "--max-time",
+                        "10",
+                        "-H",
+                        "accept: application/dns-json",
+                        "--resolve",
+                        f"cloudflare-dns.com:443:{nameserver}",
+                        dns_url,
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+            except OSError:
+                continue
+            if response.returncode != 0:
+                continue
+
+            try:
+                payload = json.loads(response.stdout or "{}")
+            except json.JSONDecodeError:
+                continue
+
+            for answer in payload.get("Answer", []) if isinstance(payload, dict) else []:
+                data = str(answer.get("data", ""))
+                if not data or data in ips:
+                    continue
+                if record_type == "A" and "." in data:
+                    ips.append(data)
+                if record_type == "AAAA" and ":" in data:
+                    ips.append(data)
+        return ips
+
+    def _resolve_target(hostname: str, ip: str) -> str:
+        host = f"[{ip}]" if ":" in ip else ip
+        return f"{hostname}:443:{host}"
+
+    resolve_targets: list[str] = []
+    resolved_ips: list[str] | None = None
     for _ in range(METRICS_RETRY_ATTEMPTS):
-        response = subprocess.run(
-            ["curl", "-fsS", "--max-time", "10", url],
-            capture_output=True,
-            text=True,
-        )
-        if response.returncode == 0 and (not expected_text or expected_text in response.stdout):
+        if _probe_public_route():
             return True
+
+        if resolved_ips is None:
+            resolved_ips = _public_dns_ips(fqdn)
+        for ip in resolved_ips:
+            resolve_target = _resolve_target(fqdn, ip)
+            if resolve_target not in resolve_targets:
+                resolve_targets.append(resolve_target)
+
+        for resolve_target in resolve_targets:
+            if _probe_public_route(resolve_target):
+                return True
+
         time.sleep(METRICS_RETRY_INTERVAL_SEC)
     return False
 

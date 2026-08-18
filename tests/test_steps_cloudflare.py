@@ -56,6 +56,72 @@ class TestServicePublishing:
             with pytest.raises(RuntimeError, match="Cloudflare publication failed for transfer.example.com: public route did not become ready"):
                 cloudflare.publish_service(state, svc)
 
+    def test_wait_for_public_route_fallback_to_cloudflare_dns(self, monkeypatch):
+        svc = {"smoke": {"path": "/", "expected_text": "Dockge"}}
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **kwargs):
+            cmd_parts = list(cmd)
+            calls.append(cmd_parts)
+            result = MagicMock()
+            result.stderr = ""
+
+            if "cloudflare-dns.com/dns-query" in cmd_parts[-1]:
+                if "type=A" in cmd_parts[-1]:
+                    result.returncode = 0
+                    result.stdout = '{"Answer":[{"data":"104.21.26.29","type":1}]}'
+                else:
+                    result.returncode = 0
+                    result.stdout = '{"Answer":[]}'
+                return result
+
+            if "--resolve" in cmd_parts:
+                if "dockge.fayaa.dev:443:104.21.26.29" in cmd_parts:
+                    result.returncode = 0
+                    result.stdout = "Dockge"
+                else:
+                    result.returncode = 6
+                    result.stdout = ""
+                return result
+
+            if cmd_parts[-1] == "https://dockge.fayaa.dev/":
+                result.returncode = 6
+                result.stdout = ""
+            else:
+                result.returncode = 1
+                result.stdout = ""
+            return result
+
+        monkeypatch.setattr(cloudflare, "METRICS_RETRY_ATTEMPTS", 1)
+        monkeypatch.setattr(cloudflare, "METRICS_RETRY_INTERVAL_SEC", 0)
+
+        with patch("rakkib.steps.cloudflare.subprocess.run", side_effect=fake_run):
+            assert cloudflare._wait_for_public_route("dockge.fayaa.dev", svc)
+
+        assert any("cloudflare-dns.com/dns-query" in c[-1] for c in calls)
+        assert any("--resolve" in c and "104.21.26.29" in c for c in calls)
+
+    def test_wait_for_public_route_with_missing_dns_still_returns_false(self, monkeypatch):
+        svc = {"smoke": {"path": "/", "expected_text": "Dockge"}}
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **kwargs):
+            cmd_parts = list(cmd)
+            calls.append(cmd_parts)
+            result = MagicMock()
+            result.stderr = ""
+            result.returncode = 6
+            result.stdout = ""
+            return result
+
+        monkeypatch.setattr(cloudflare, "METRICS_RETRY_ATTEMPTS", 1)
+        monkeypatch.setattr(cloudflare, "METRICS_RETRY_INTERVAL_SEC", 0)
+
+        with patch("rakkib.steps.cloudflare.subprocess.run", side_effect=fake_run):
+            assert not cloudflare._wait_for_public_route("dockge.fayaa.dev", svc)
+
+        assert calls, "Expected HTTP probes to be attempted"
+
 
 def _subprocess_side_effect(
     cloudflared_version: bool = True,
