@@ -34,7 +34,7 @@ sshpass -p 'z45rdKUe' ssh -o StrictHostKeyChecking=accept-new root@174.138.183.1
 - Never install Rakkib on the macOS development workstation. Do not run `install.sh`, the curl installer, or an editable/package installation of Rakkib there.
 - Do not install or configure Rakkib deployment prerequisites such as Docker or cloudflared on the macOS development workstation.
 - For installer or initialization changes, do not perform test-server installation or deployment; leave bare-metal validation to the user.
-- `192.168.0.235` (Fayaalink) is the dev workstation, not the validation target. Never run service-validation or test-server deployment workflows on `192.168.0.235`.
+- `ssh t` (Fayaalink) is the dev workstation, not the validation target. Never run service-validation or test-server deployment workflows on `ssh t`.
 - Local developer regression baseline after Python changes: run `python3 -m py_compile <changed-python-files>` and the relevant pytest target through the project venv, usually `.venv/bin/python -m pytest <target>`.
 - Use the existing project venv for local tests. If the venv or pytest is missing, report the local test as unavailable; do not install Rakkib or test dependencies on the development workstation.
 

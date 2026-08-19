@@ -61,7 +61,7 @@ from rakkib.state import State, default_state_path
 from rakkib.steps import STEP_MODULES, VerificationResult, load_service_registry, selected_service_defs
 from rakkib.steps import postgres as postgres_step
 from rakkib.steps import services as services_step
-from rakkib.steps.cloudflare import _cloudflared_bin, _show_qr
+from rakkib.steps.cloudflare import _cloudflared_bin, _show_qr, authorize_cloudflare
 from rakkib.tui import progress_spinner, prompt_checkbox, prompt_confirm
 from rakkib.util import (
     checkout_dir as _checkout_dir,
@@ -109,7 +109,21 @@ def _stdin_is_interactive() -> bool:
     return sys.stdin.isatty()
 
 
-def _run_auth_setup(ctx: click.Context) -> bool:
+def _run_cloudflare_auth(ctx: click.Context) -> bool:
+    """Authorize Cloudflare browser login for the invoking admin user."""
+    repo_dir = ctx.obj["repo_dir"]
+    state = State.load(default_state_path(repo_dir))
+    admin_user = resolve_user(state)
+    try:
+        authorize_cloudflare(admin_user)
+    except RuntimeError as exc:
+        console.print(f"[red]{exc}[/red]")
+        return False
+    console.print("[green]Cloudflare authorization is ready.[/green]")
+    return True
+
+
+def _prepare_host_authorization(ctx: click.Context) -> bool:
     """Validate sudo and prepare Docker access when possible."""
     if os.geteuid() == 0:
         console.print("[green]Authorization is ready.[/green]")
@@ -170,6 +184,15 @@ def _run_auth_setup(ctx: click.Context) -> bool:
         console.print(f"[dim]{docker_access_commands(user)}[/dim]")
         return False
     console.print("[green]Re-run `rakkib pull`.[/green]")
+    return True
+
+
+def _run_auth_setup(ctx: click.Context, cloudflare: bool = False) -> bool:
+    """Validate sudo and Docker access, then optionally authorize Cloudflare."""
+    if not _prepare_host_authorization(ctx):
+        return False
+    if cloudflare:
+        return _run_cloudflare_auth(ctx)
     return True
 
 
@@ -1381,10 +1404,11 @@ def uninstall(ctx: click.Context) -> None:
 
 
 @cli.command()
+@click.option("--cloudflare", is_flag=True, help="Authorize Cloudflare browser login for this admin user.")
 @click.pass_context
-def auth(ctx: click.Context) -> None:
+def auth(ctx: click.Context, cloudflare: bool) -> None:
     """Validate sudo and prepare Docker access when needed."""
-    if not _run_auth_setup(ctx):
+    if not _run_auth_setup(ctx, cloudflare=cloudflare):
         ctx.exit(1)
 
 

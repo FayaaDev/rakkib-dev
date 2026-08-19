@@ -14,10 +14,16 @@ Fallback if the branded endpoint is unavailable:
 curl -fsSL https://raw.githubusercontent.com/FayaaDev/rakkib/main/install.sh | bash
 ```
 
-Then configure and deploy:
+Then configure and deploy. Cloudflare public HTTPS and internal-only installs use different authorization first:
 
 ```bash
-rakkib init   # interview wizard, prerequisite installation, and deployment
+# Public HTTPS through Cloudflare
+rakkib auth --cloudflare
+rakkib init
+
+# Internal-only (no public routes)
+rakkib auth
+rakkib init
 ```
 
 For a local clone:
@@ -26,13 +32,13 @@ For a local clone:
 git clone https://github.com/FayaaDev/rakkib.git
 cd rakkib
 bash install.sh
-rakkib init
+# then run the Cloudflare or internal-only commands above
 ```
 
 ## How It Works
 
 1. `install.sh` clones or updates the repo, creates a project-local venv at `<repo>/.venv`, installs the rakkib package into it, and symlinks `~/.local/bin/rakkib` onto `PATH`.
-2. `rakkib init` runs a TUI interview (phases 1–6), installs Docker and, for Cloudflare deployments, cloudflared if missing, saves answers to `.fss-state.yaml`, then executes each setup step and verification in order. Incomplete interviews remain resumable.
+2. `rakkib auth --cloudflare` authorizes the admin user's Cloudflare account before a public deployment. `rakkib init` then runs a TUI interview (phases 1–6), installs Docker and, for Cloudflare deployments, cloudflared if missing, saves answers to `.fss-state.yaml`, and deploys without opening another Cloudflare login. Incomplete interviews remain resumable.
 3. `rakkib pull` reapplies prerequisites and setup steps from the confirmed state.
 4. `registry.yaml` is the service catalog. Each service entry controls templating, secrets, subdomains, and dependencies.
 5. `src/rakkib/data/steps/` contains step modules. Each has `run()` and `verify()` functions; a failed verify halts the installer.
@@ -50,7 +56,8 @@ rakkib restart --all     # restart all services in dependency order
 rakkib doctor            # run host diagnostics
 rakkib doctor --json     # machine-readable diagnostics output
 rakkib doctor --interactive  # diagnostics with guided auto-fix
-rakkib auth sudo         # validate sudo for the current terminal
+rakkib auth              # validate sudo and prepare Docker access
+rakkib auth --cloudflare # also authorize Cloudflare browser login
 rakkib uninstall         # remove the rakkib CLI shim and PATH entries
 ```
 

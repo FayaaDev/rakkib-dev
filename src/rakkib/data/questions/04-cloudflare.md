@@ -52,11 +52,11 @@ fields:
 
 This phase records the exposure mode and, when selected, the intended Cloudflare setup into `.fss-state.yaml` under the `cloudflare:` section.
 
-This phase only determines the intended Cloudflare setup. It does not create the tunnel yet. Tunnel login, tunnel creation, DNS routing, and credentials placement happen later in `steps/3-cloudflare.md`.
+This phase only determines the intended Cloudflare setup. It does not create the tunnel yet. Tunnel creation, DNS routing, and credentials placement happen later in the Cloudflare deployment step.
 
-Make it explicit that Step 3 is a blocking handoff. When Rakkib reaches the Cloudflare step, the install will pause until Cloudflare approves the server.
+Browser authorization must be completed with `rakkib auth --cloudflare` before running `rakkib init`. The Cloudflare step uses the already-approved certificate; it does not open a browser-approval handoff.
 
-Do not ask for a Cloudflare API token during the normal flow. The default and recommended path is Cloudflare browser login. On headless servers, `cloudflared tunnel login` prints a URL that the user can open on another device.
+Do not ask for a Cloudflare API token during the normal flow. The default and recommended path is Cloudflare browser login via `rakkib auth --cloudflare`.
 
 ---
 
@@ -65,8 +65,8 @@ Do not ask for a Cloudflare API token during the normal flow. The default and re
 The exposure mode was recorded in Phase 2. If `cloudflare` is selected:
 
 - Always create a new tunnel (`cloudflare.tunnel_strategy: new`).
-- Always use Cloudflare browser login during Step 3 (`cloudflare.auth_method: browser_login`).
-- Assume headless and show the login link flow during Step 3 (`cloudflare.headless: true`).
+- Record Cloudflare browser login as the authentication method (`cloudflare.auth_method: browser_login`). Authorization itself is completed with `rakkib auth --cloudflare` before `rakkib init`.
+- Record headless as the intended login style (`cloudflare.headless: true`).
 - Tunnel name is derived from the admin username (`{{admin_user}}-tunnel`).
 - SSH subdomain is always `ssh`.
 

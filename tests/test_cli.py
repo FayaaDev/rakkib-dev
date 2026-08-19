@@ -97,6 +97,31 @@ class TestInit:
         assert events == ["prerequisites", "steps"]
         assert "Run rakkib pull to install" not in result.output
 
+    def test_init_never_starts_cloudflare_login(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+        questions_dir = repo_dir / "questions"
+        questions_dir.mkdir()
+        (repo_dir / ".fss-state.yaml").write_text("confirmed: true\n")
+        (questions_dir / "01-platform.md").write_text(
+            "## AgentSchema\n```yaml\nschema_version: 1\nphase: 1\nfields:\n"
+            "  - id: platform\n    type: single_select\n    prompt: Platform?\n"
+            "    canonical_values: [linux, mac]\n    records: [platform]\n```\n"
+        )
+
+        with (
+            patch("rakkib.cli.run_interview", return_value=State({"platform": "linux", "confirmed": True})),
+            patch("rakkib.cli.ensure_prereqs", return_value=True),
+            patch("rakkib.cli._run_steps", return_value=True),
+            patch("rakkib.cli._persist_deployed_selection"),
+            patch("rakkib.cli.authorize_cloudflare") as mock_auth,
+        ):
+            result = runner.invoke(cli, ["init"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 0
+        mock_auth.assert_not_called()
+
     def test_init_resume_after_docker_access_skips_interview(self, tmp_path: Path):
         runner = CliRunner()
         repo_dir = tmp_path / "repo"
@@ -1321,6 +1346,7 @@ class TestAuth:
         runner = CliRunner()
         result = runner.invoke(cli, ["auth", "--help"])
         assert result.exit_code == 0
+        assert "--cloudflare" in result.output
 
     def test_auth_docker_prepares_access(self, tmp_path: Path, monkeypatch):
         from rakkib.docker import DockerError
@@ -1371,6 +1397,69 @@ class TestAuth:
 
         assert result.exit_code == 0
         assert "Re-run `rakkib pull`" in result.output
+
+
+class TestAuthCloudflare:
+    def test_auth_cloudflare_success(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr(os, "geteuid", lambda: 1000)
+        monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/sudo" if cmd == "sudo" else None)
+        runner = CliRunner()
+        with (
+            patch("rakkib.cli.subprocess.run", return_value=MagicMock(returncode=0)),
+            patch("rakkib.cli.authorize_cloudflare") as mock_auth,
+        ):
+            result = runner.invoke(cli, ["auth", "--cloudflare"], obj={"repo_dir": tmp_path})
+
+        assert result.exit_code == 0
+        mock_auth.assert_called_once()
+        assert mock_auth.call_args.args[0] != "root"
+        assert "Cloudflare authorization is ready" in result.output
+
+    def test_auth_cloudflare_login_failure_surfaces_diagnostics(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr(os, "geteuid", lambda: 1000)
+        monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/sudo" if cmd == "sudo" else None)
+        runner = CliRunner()
+        with (
+            patch("rakkib.cli.subprocess.run", return_value=MagicMock(returncode=0)),
+            patch(
+                "rakkib.cli.authorize_cloudflare",
+                side_effect=RuntimeError(
+                    "cloudflared tunnel login failed (exit 1). "
+                    "Expected certificate: /home/ubuntu/.cloudflared/cert.pem. "
+                    "failed to start login"
+                ),
+            ),
+        ):
+            result = runner.invoke(cli, ["auth", "--cloudflare"], obj={"repo_dir": tmp_path})
+
+        assert result.exit_code == 1
+        assert "Expected certificate: /home/ubuntu/.cloudflared/cert.pem" in result.output
+        assert "failed to start login" in result.output
+
+    def test_auth_cloudflare_skips_when_host_auth_fails(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr(os, "geteuid", lambda: 1000)
+        monkeypatch.setattr(shutil, "which", lambda _cmd: None)
+        runner = CliRunner()
+        with patch("rakkib.cli.authorize_cloudflare") as mock_auth:
+            result = runner.invoke(cli, ["auth", "--cloudflare"], obj={"repo_dir": tmp_path})
+
+        assert result.exit_code == 1
+        mock_auth.assert_not_called()
+        assert "sudo is required" in result.output
+
+    def test_auth_cloudflare_sudo_preserves_admin_home(self, tmp_path: Path, monkeypatch):
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+        (repo_dir / ".fss-state.yaml").write_text("admin_user: ubuntu\n")
+        monkeypatch.setattr(os, "geteuid", lambda: 0)
+        monkeypatch.setenv("SUDO_USER", "ubuntu")
+        runner = CliRunner()
+        with patch("rakkib.cli.authorize_cloudflare") as mock_auth:
+            result = runner.invoke(cli, ["auth", "--cloudflare"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 0
+        mock_auth.assert_called_once_with("ubuntu")
+        assert "Cloudflare authorization is ready" in result.output
 
 
 class TestPrivileged:

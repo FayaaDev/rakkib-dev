@@ -1348,7 +1348,7 @@ def attempt_fix_compose() -> str:
         return f"Required command not found: {e}"
 
 
-def attempt_fix_cloudflared() -> str:
+def attempt_fix_cloudflared(home: Path | None = None) -> str:
     """Install cloudflared binary into ~/.local/bin. Returns a message describing the result."""
     if platform.system() == "Darwin":
         _ensure_macos_tool_path()
@@ -1368,7 +1368,7 @@ def attempt_fix_cloudflared() -> str:
     if not _command_exists("curl"):
         return "curl is required but not found. Install curl first."
 
-    local_bin = Path.home() / ".local" / "bin"
+    local_bin = (home or Path.home()) / ".local" / "bin"
     local_bin.mkdir(parents=True, exist_ok=True)
 
     arch = _normalize_arch(platform.machine()) or "amd64"

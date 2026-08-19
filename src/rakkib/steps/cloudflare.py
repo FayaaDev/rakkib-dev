@@ -52,12 +52,47 @@ def _cloudflared_env(admin_user: str | None) -> dict[str, str]:
     return {"HOME": str(home)}
 
 
-def _cloudflared_bin() -> str:
-    """Return the path to the cloudflared binary."""
-    local_bin = Path.home() / ".local" / "bin" / "cloudflared"
-    if local_bin.exists():
-        return str(local_bin)
+def _cloudflared_bin(admin_user: str | None = None) -> str:
+    """Return the path to the cloudflared binary for the admin user when possible."""
+    homes: list[Path] = []
+    if admin_user and admin_user != "root":
+        admin_home = _home_for_user(admin_user)
+        if admin_home is not None:
+            homes.append(admin_home)
+    current_home = Path.home()
+    if current_home not in homes and (current_home != Path("/root") or not admin_user or admin_user == "root"):
+        homes.append(current_home)
+    for home in homes:
+        local_bin = home / ".local" / "bin" / "cloudflared"
+        if local_bin.exists():
+            return str(local_bin)
     return "cloudflared"
+
+
+def cloudflare_cert_path(admin_user: str | None = None) -> Path:
+    """Return the expected cloudflared origin certificate path for the admin user."""
+    if admin_user and admin_user != "root":
+        home = _home_for_user(admin_user)
+        if home is not None:
+            return home / ".cloudflared" / "cert.pem"
+    return Path.home() / ".cloudflared" / "cert.pem"
+
+
+def _cloudflared_cmd(admin_user: str | None, *args: str) -> list[str]:
+    """Build a cloudflared command that keeps credentials in the admin user's home."""
+    binary = _cloudflared_bin(admin_user)
+    if os.geteuid() == 0 and admin_user and admin_user != "root":
+        return ["sudo", "-u", admin_user, "-H", "--", binary, *args]
+    return [binary, *args]
+
+
+def _auth_required_error(message: str, admin_user: str | None = None, detail: str = "") -> RuntimeError:
+    expected = cloudflare_cert_path(admin_user)
+    parts = [message.rstrip("."), f"Expected certificate: {expected}."]
+    if detail:
+        parts.append(detail.strip())
+    parts.append("Run `rakkib auth --cloudflare` as the admin user, then retry.")
+    return RuntimeError(" ".join(part for part in parts if part))
 
 
 def _show_qr(url: str) -> None:
@@ -677,6 +712,94 @@ def _create_tunnel_with_fallback(
     return tunnel_name, tunnel_uuid
 
 
+def authorize_cloudflare(admin_user: str | None) -> None:
+    """Install cloudflared if needed, run browser login, and verify the origin cert."""
+    if not admin_user or admin_user == "root":
+        raise RuntimeError(
+            "Cloudflare authorization must run as the admin user, not root. "
+            "Run `rakkib auth --cloudflare` as the sudo-capable admin account."
+        )
+
+    cert_path = cloudflare_cert_path(admin_user)
+    cloudflared_env = _cloudflared_env(admin_user)
+    admin_home = _home_for_user(admin_user)
+
+    try:
+        _run(_cloudflared_cmd(admin_user, "--version"), env=cloudflared_env)
+    except RuntimeError:
+        print("Preparing Cloudflare tunnel tool...")
+        msg = attempt_fix_cloudflared(home=admin_home)
+        print(f"[dim]{msg}[/dim]")
+        binary = _cloudflared_bin(admin_user)
+        if shutil.which("cloudflared") is None and not Path(binary).exists():
+            raise RuntimeError(
+                f"cloudflared installation failed. {msg} "
+                f"Expected certificate: {cert_path}. "
+                "Install manually: https://github.com/cloudflare/cloudflared/releases"
+            )
+
+    print("\nCloudflare login required")
+    print("Waiting for login link...\n")
+
+    proc = subprocess.Popen(
+        _cloudflared_cmd(admin_user, "tunnel", "login"),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env=_merged_env(cloudflared_env),
+    )
+
+    login_url: str | None = None
+    showed_qr = False
+    captured: list[str] = []
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        captured.append(line)
+        if not login_url and "https://" in line:
+            login_url = line.strip().split()[-1]
+            if login_url.startswith("https://"):
+                print("\nScan this QR code on your phone to approve the domain:\n")
+                _show_qr(login_url)
+                showed_qr = True
+                print(
+                    f"\nOr open this link:\n  {login_url}\n\n"
+                    "Waiting for approval. Keep this terminal open...\n"
+                )
+                continue
+
+        if showed_qr and _looks_like_cloudflared_ascii_qr(line):
+            continue
+
+        print(line, end="", flush=True)
+
+    proc.wait()
+    if proc.returncode != 0:
+        detail = "".join(captured).strip() or "unknown error"
+        raise RuntimeError(
+            f"cloudflared tunnel login failed (exit {proc.returncode}). "
+            f"Expected certificate: {cert_path}. {detail}"
+        )
+
+    if not _is_readable_artifact(cert_path):
+        raise RuntimeError(
+            f"Cloudflare certificate was not created at {cert_path}. "
+            "Approve access in the browser, select the domain, then retry "
+            "`rakkib auth --cloudflare`."
+        )
+
+    list_result = _run(
+        _cloudflared_cmd(admin_user, "tunnel", "list"),
+        env=cloudflared_env,
+        check=False,
+    )
+    if list_result.returncode != 0:
+        detail = (list_result.stderr or list_result.stdout or "").strip() or "unknown error"
+        raise RuntimeError(
+            f"cloudflared tunnel list failed after login. "
+            f"Expected certificate: {cert_path}. {detail}"
+        )
+
+
 def run(state: State) -> None:
     if not cloudflare_enabled(state):
         return
@@ -732,7 +855,7 @@ def run(state: State) -> None:
     token_env = dict(cloudflared_env)
     previous_tunnel_name = tunnel_name
 
-    # 4-5. Handle auth methods
+    # 4-5. Handle auth methods. Browser login happens in `rakkib auth --cloudflare`.
     if auth_method == "browser_login":
         if not cert_path.exists():
             default_cert = _find_cloudflared_artifact("cert.pem", admin_user=admin_user)
@@ -740,83 +863,25 @@ def run(state: State) -> None:
                 shutil.copy2(default_cert, cert_path)
             else:
                 unreadable_cert = _find_unreadable_cloudflared_artifact("cert.pem", admin_user=admin_user)
-                if unreadable_cert is not None:
-                    print(
-                        "Found an existing Cloudflare browser-login cert, but the current setup run cannot read it: "
-                        f"{unreadable_cert}\n"
-                        "Continuing with a fresh cloudflared login for the current user instead."
-                    )
-                headless = state.get("cloudflare.headless", False)
-                if headless:
-                    print("\nCloudflare login required")
-                    print("Waiting for login link...\n")
+                detail = f"Found unreadable certificate at {unreadable_cert}." if unreadable_cert else ""
+                raise _auth_required_error(
+                    "Cloudflare browser authorization is missing",
+                    admin_user=admin_user,
+                    detail=detail,
+                )
 
-                    proc = subprocess.Popen(
-                        [_cloudflared_bin(), "tunnel", "login"],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True,
-                        env=_merged_env(token_env),
-                    )
-
-                    login_url: str | None = None
-                    showed_qr = False
-                    assert proc.stdout is not None
-                    for line in proc.stdout:
-                        if not login_url and "https://" in line:
-                            login_url = line.strip().split()[-1]
-                            if login_url.startswith("https://"):
-                                print("\nScan this QR code on your phone to approve the domain:\n")
-                                _show_qr(login_url)
-                                showed_qr = True
-                                print(
-                                    f"\nOr open this link:\n  {login_url}\n\n"
-                                    "Waiting for approval. Keep this terminal open...\n"
-                                )
-                                continue
-
-                        # Avoid printing cloudflared's ASCII QR block; it is
-                        # commonly unscannable due to terminal aspect ratios.
-                        if showed_qr and _looks_like_cloudflared_ascii_qr(line):
-                            continue
-
-                        print(line, end="", flush=True)
-
-                    proc.wait()
-                    if proc.returncode != 0:
-                        raise RuntimeError(
-                            f"cloudflared tunnel login failed (exit {proc.returncode}). "
-                            "Try again or use auth_method=api_token."
-                        )
-                else:
-                    print(
-                        "\nCloudflare approval is required.\n"
-                        "A browser window will open for Cloudflare login.\n"
-                        "Approve the domain, then return here.\n"
-                    )
-                    result = subprocess.run(
-                        [_cloudflared_bin(), "tunnel", "login"],
-                        text=True,
-                        env=_merged_env(token_env),
-                    )
-                    if result.returncode != 0:
-                        raise RuntimeError(
-                            f"cloudflared tunnel login failed: "
-                            f"{result.stderr.strip() if result.stderr else 'unknown error'}"
-                        )
-
-                default_cert = _find_cloudflared_artifact("cert.pem", admin_user=admin_user)
-                if default_cert is not None and not cert_path.exists():
-                    shutil.copy2(default_cert, cert_path)
-
-        # Verify login succeeded
         list_result = _run(
-            [_cloudflared_bin(), "tunnel", "list"],
+            [_cloudflared_bin(admin_user), "tunnel", "list"],
             env=token_env,
             check=False,
         )
         if list_result.returncode != 0:
-            raise RuntimeError("cloudflared tunnel list failed after login. Resolve auth before continuing.")
+            detail = (list_result.stderr or list_result.stdout or "").strip()
+            raise _auth_required_error(
+                "cloudflared tunnel list failed",
+                admin_user=admin_user,
+                detail=detail,
+            )
 
     elif auth_method == "api_token":
         api_token = getpass.getpass("Cloudflare API token: ")
@@ -854,29 +919,15 @@ def run(state: State) -> None:
         creds_host_path = state.get("cloudflare.tunnel_creds_host_path")
 
         if not tunnel_uuid or not creds_host_path or not Path(creds_host_path).exists():
-            # Need to repair auth
             if not cert_path.exists():
                 default_cert = _find_cloudflared_artifact("cert.pem", admin_user=admin_user)
                 if default_cert is not None:
                     shutil.copy2(default_cert, cert_path)
                 else:
-                    print(
-                        "\nCloudflare login is needed to repair missing credentials.\n"
-                        "cloudflared tunnel login will be initiated.\n"
+                    raise _auth_required_error(
+                        "Cloudflare authorization is missing",
+                        admin_user=admin_user,
                     )
-                    result = subprocess.run(
-                        [_cloudflared_bin(), "tunnel", "login"],
-                        text=True,
-                        env=_merged_env(token_env),
-                    )
-                    if result.returncode != 0:
-                        raise RuntimeError(
-                            f"cloudflared tunnel login failed: "
-                            f"{result.stderr.strip() if result.stderr else 'unknown error'}"
-                        )
-                    default_cert = _find_cloudflared_artifact("cert.pem", admin_user=admin_user)
-                    if default_cert is not None and not cert_path.exists():
-                        shutil.copy2(default_cert, cert_path)
 
     # 7-9. Handle tunnel discovery / creation
     tunnel_uuid = state.get("cloudflare.tunnel_uuid")
@@ -948,7 +999,7 @@ def run(state: State) -> None:
             elif not creds_host_path.exists():
                 raise RuntimeError(
                     "Created a fresh Cloudflare tunnel but could not locate its credentials file. "
-                    "Run cloudflared tunnel login and re-run rakkib pull."
+                    "Run `rakkib auth --cloudflare` and re-run rakkib pull."
                 )
         else:
             searched_paths = ", ".join(
@@ -957,7 +1008,7 @@ def run(state: State) -> None:
             raise RuntimeError(
                 f"Tunnel credentials file not found at {creds_host_path}, "
                 f"or any searched cloudflared path ({searched_paths}). "
-                "Run cloudflared tunnel login and ensure the tunnel was created in the correct account."
+                "Run `rakkib auth --cloudflare` and ensure the tunnel was created in the correct account."
             )
 
     # 12. Apply explicit modes for the dir, config, and credentials. Re-run

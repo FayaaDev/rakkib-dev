@@ -14,13 +14,21 @@ Fallback:
 curl -fsSL https://raw.githubusercontent.com/FayaaDev/rakkib/main/install.sh | bash
 ```
 
-Then run:
+Then authorize and initialize. Cloudflare public HTTPS and internal-only installs use different first commands:
 
 ```bash
+# Public HTTPS through Cloudflare
+rakkib auth --cloudflare
+rakkib init
+
+# Internal-only (no public routes)
+rakkib auth
 rakkib init
 ```
 
-After confirmation, `rakkib init` installs missing prerequisites and deploys the selected services. Use `rakkib pull` later to reapply the confirmed configuration.
+Cloudflare credentials belong to the admin account, not root. Run these commands as the sudo-capable admin user.
+
+After confirmation, `rakkib init` installs missing prerequisites and deploys the selected services. It does not open a Cloudflare login flow. Use `rakkib pull` later to reapply the confirmed configuration.
 
 ## Update
 

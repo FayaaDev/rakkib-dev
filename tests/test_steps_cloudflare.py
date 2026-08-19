@@ -13,6 +13,14 @@ from rakkib.state import State
 from rakkib.steps import cloudflare
 
 
+def _write_managed_cert(tmp_path: Path) -> Path:
+    cloudflared_dir = tmp_path / "data" / "cloudflared"
+    cloudflared_dir.mkdir(parents=True, exist_ok=True)
+    cert = cloudflared_dir / "cert.pem"
+    cert.write_text("cert")
+    return cert
+
+
 def _make_state(tmp_path: Path, **overrides) -> State:
     defaults = {
         "data_root": str(tmp_path),
@@ -399,6 +407,7 @@ class TestRun:
         state = _make_state(tmp_path)
         cloudflared_dir = tmp_path / "data" / "cloudflared"
         cloudflared_dir.mkdir(parents=True)
+        _write_managed_cert(tmp_path)
         (cloudflared_dir / "new-uuid.json").write_text("{}")
 
         with patch("rakkib.steps.cloudflare._run") as mock_run:
@@ -423,6 +432,7 @@ class TestRun:
 
         cloudflared_dir = install_root / "data" / "cloudflared"
         cloudflared_dir.mkdir(parents=True)
+        (cloudflared_dir / "cert.pem").write_text("cert")
         (cloudflared_dir / "path-bound-uuid.json").write_text("{}")
 
         monkeypatch.chdir(cwd)
@@ -463,6 +473,7 @@ class TestRun:
         state = _make_state(tmp_path)
         cloudflared_dir = tmp_path / "data" / "cloudflared"
         cloudflared_dir.mkdir(parents=True)
+        _write_managed_cert(tmp_path)
         (cloudflared_dir / "test-uuid.json").write_text("{}")
 
         with patch("rakkib.steps.cloudflare._run") as mock_run:
@@ -494,6 +505,7 @@ class TestRun:
         state = _make_state(tmp_path)
         cloudflared_dir = tmp_path / "data" / "cloudflared"
         cloudflared_dir.mkdir(parents=True)
+        _write_managed_cert(tmp_path)
         (cloudflared_dir / "test-uuid-123.json").write_text("{}")
 
         with patch("rakkib.steps.cloudflare._run") as mock_run:
@@ -540,7 +552,7 @@ class TestRun:
                         mock_run.side_effect = _subprocess_side_effect()
                         cloudflare.run(state)
 
-    def test_run_existing_tunnel_repairs_auth(self, tmp_path):
+    def test_run_existing_tunnel_missing_auth_directs_to_auth_cloudflare(self, tmp_path):
         state = _make_state(
             tmp_path,
             cloudflare={
@@ -556,18 +568,21 @@ class TestRun:
         cloudflared_dir.mkdir(parents=True)
         (cloudflared_dir / "repaired-uuid.json").write_text("{}")
 
-        with patch("rakkib.steps.cloudflare._run") as mock_run:
-            with patch("rakkib.steps.cloudflare.compose_up"):
-                with patch("rakkib.steps.cloudflare.subprocess.run") as mock_sub:
-                    mock_sub.return_value.returncode = 0
-                    mock_sub.return_value.stdout = ""
-                    mock_sub.return_value.stderr = ""
-                    mock_run.side_effect = _subprocess_side_effect(
-                        tunnels_json=[{"name": "rakkib-example", "id": "repaired-uuid"}]
-                    )
-                    cloudflare.run(state)
+        with (
+            patch("rakkib.steps.cloudflare._run") as mock_run,
+            patch("rakkib.steps.cloudflare.subprocess.Popen") as mock_popen,
+            patch("rakkib.steps.cloudflare.subprocess.run") as mock_sub,
+            patch("rakkib.steps.cloudflare._find_cloudflared_artifact", return_value=None),
+        ):
+            mock_run.side_effect = _subprocess_side_effect()
+            with pytest.raises(RuntimeError, match="rakkib auth --cloudflare"):
+                cloudflare.run(state)
 
-        assert state.get("cloudflare.tunnel_uuid") == "repaired-uuid"
+        mock_popen.assert_not_called()
+        assert not any(
+            "login" in " ".join(str(part) for part in (call.args[0] if call.args else []))
+            for call in mock_sub.call_args_list
+        )
 
     def test_run_reuses_existing_tunnel_when_creds_found_in_admin_home(self, tmp_path):
         state = _make_state(tmp_path)
@@ -671,6 +686,7 @@ class TestRun:
         state = _make_state(tmp_path)
         cloudflared_dir = tmp_path / "data" / "cloudflared"
         cloudflared_dir.mkdir(parents=True)
+        _write_managed_cert(tmp_path)
         creds_path = cloudflared_dir / "test-uuid-123.json"
         creds_path.write_text("{}")
 
@@ -689,6 +705,7 @@ class TestRun:
         state = _make_state(tmp_path)
         cloudflared_dir = tmp_path / "data" / "cloudflared"
         cloudflared_dir.mkdir(parents=True)
+        _write_managed_cert(tmp_path)
         (cloudflared_dir / "test-uuid-123.json").write_text("{}")
 
         with patch("rakkib.steps.cloudflare._run") as mock_run:
@@ -698,10 +715,249 @@ class TestRun:
 
     def test_run_raises_on_missing_credentials(self, tmp_path):
         state = _make_state(tmp_path)
+        _write_managed_cert(tmp_path)
         with patch("rakkib.steps.cloudflare._run") as mock_run:
             mock_run.side_effect = _subprocess_side_effect()
             with pytest.raises(RuntimeError, match="could not locate its credentials file"):
                 cloudflare.run(state)
+
+    def test_run_missing_browser_cert_directs_to_auth_cloudflare(self, tmp_path):
+        state = _make_state(tmp_path)
+        with (
+            patch("rakkib.steps.cloudflare._run") as mock_run,
+            patch("rakkib.steps.cloudflare.subprocess.Popen") as mock_popen,
+            patch("rakkib.steps.cloudflare.subprocess.run") as mock_sub,
+            patch("rakkib.steps.cloudflare._find_cloudflared_artifact", return_value=None),
+            patch("rakkib.steps.cloudflare._find_unreadable_cloudflared_artifact", return_value=None),
+        ):
+            mock_run.side_effect = _subprocess_side_effect()
+            with pytest.raises(RuntimeError, match="rakkib auth --cloudflare"):
+                cloudflare.run(state)
+
+        mock_popen.assert_not_called()
+        assert not any(
+            "login" in " ".join(str(part) for part in (call.args[0] if call.args else []))
+            for call in mock_sub.call_args_list
+        )
+
+    def test_run_unreadable_cert_directs_to_auth_cloudflare(self, tmp_path):
+        state = _make_state(tmp_path)
+        denied = Path("/root/.cloudflared/cert.pem")
+        with (
+            patch("rakkib.steps.cloudflare._run") as mock_run,
+            patch("rakkib.steps.cloudflare.subprocess.Popen") as mock_popen,
+            patch("rakkib.steps.cloudflare._find_cloudflared_artifact", return_value=None),
+            patch("rakkib.steps.cloudflare._find_unreadable_cloudflared_artifact", return_value=denied),
+        ):
+            mock_run.side_effect = _subprocess_side_effect()
+            with pytest.raises(RuntimeError, match="rakkib auth --cloudflare") as exc_info:
+                cloudflare.run(state)
+
+        assert str(denied) in str(exc_info.value)
+        mock_popen.assert_not_called()
+
+    def test_run_tunnel_list_failure_directs_to_auth_cloudflare(self, tmp_path):
+        state = _make_state(tmp_path)
+        _write_managed_cert(tmp_path)
+
+        def run_side_effect(cmd, **kwargs):
+            result = _subprocess_side_effect(tunnel_list_ok=False)(cmd, **kwargs)
+            if len(cmd) > 2 and cmd[1] == "tunnel" and cmd[2] == "list":
+                result.stderr = "failed to load origin cert"
+            return result
+
+        with (
+            patch("rakkib.steps.cloudflare._run", side_effect=run_side_effect),
+            patch("rakkib.steps.cloudflare.subprocess.Popen") as mock_popen,
+        ):
+            with pytest.raises(RuntimeError, match="rakkib auth --cloudflare") as exc_info:
+                cloudflare.run(state)
+
+        assert "failed to load origin cert" in str(exc_info.value)
+        mock_popen.assert_not_called()
+
+    def test_run_never_starts_interactive_login_when_cert_exists(self, tmp_path):
+        state = _make_state(tmp_path)
+        cloudflared_dir = tmp_path / "data" / "cloudflared"
+        cloudflared_dir.mkdir(parents=True)
+        _write_managed_cert(tmp_path)
+        (cloudflared_dir / "test-uuid-123.json").write_text("{}")
+
+        with (
+            patch("rakkib.steps.cloudflare._run") as mock_run,
+            patch("rakkib.steps.cloudflare.compose_up"),
+            patch("rakkib.steps.cloudflare.subprocess.Popen") as mock_popen,
+            patch("rakkib.steps.cloudflare.subprocess.run") as mock_sub,
+        ):
+            mock_run.side_effect = _subprocess_side_effect()
+            cloudflare.run(state)
+
+        mock_popen.assert_not_called()
+        assert not any(
+            "login" in " ".join(str(part) for part in (call.args[0] if call.args else []))
+            for call in mock_sub.call_args_list
+        )
+
+
+class TestAuthorizeCloudflare:
+    def test_rejects_root_admin_user(self):
+        with pytest.raises(RuntimeError, match="not root"):
+            cloudflare.authorize_cloudflare("root")
+        with pytest.raises(RuntimeError, match="not root"):
+            cloudflare.authorize_cloudflare(None)
+
+    def test_install_failure_includes_expected_cert_path(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(cloudflare, "_home_for_user", lambda user: tmp_path)
+        monkeypatch.setattr(cloudflare, "_cloudflared_bin", lambda admin_user=None: str(tmp_path / "missing"))
+        monkeypatch.setattr(cloudflare.shutil, "which", lambda _cmd: None)
+        monkeypatch.setattr(cloudflare, "_run", MagicMock(side_effect=RuntimeError("not found")))
+        monkeypatch.setattr(cloudflare, "attempt_fix_cloudflared", lambda home=None: "download failed: 404")
+
+        with pytest.raises(RuntimeError, match="cloudflared installation failed") as exc_info:
+            cloudflare.authorize_cloudflare("ubuntu")
+
+        assert str(tmp_path / ".cloudflared" / "cert.pem") in str(exc_info.value)
+        assert "download failed: 404" in str(exc_info.value)
+
+    def test_login_failure_includes_stderr_and_cert_path(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(cloudflare, "_home_for_user", lambda user: tmp_path)
+        monkeypatch.setattr(cloudflare, "_cloudflared_bin", lambda admin_user=None: "cloudflared")
+        monkeypatch.setattr(cloudflare, "_run", MagicMock(return_value=MagicMock(returncode=0)))
+        monkeypatch.setattr(cloudflare, "_show_qr", lambda _url: None)
+
+        proc = MagicMock()
+        proc.stdout = iter(["failed to start login\n"])
+        proc.returncode = 1
+        proc.wait.return_value = 1
+        monkeypatch.setattr(cloudflare.subprocess, "Popen", lambda *args, **kwargs: proc)
+
+        with pytest.raises(RuntimeError, match="tunnel login failed") as exc_info:
+            cloudflare.authorize_cloudflare("ubuntu")
+
+        message = str(exc_info.value)
+        assert str(tmp_path / ".cloudflared" / "cert.pem") in message
+        assert "failed to start login" in message
+
+    def test_missing_cert_after_login(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(cloudflare, "_home_for_user", lambda user: tmp_path)
+        monkeypatch.setattr(cloudflare, "_cloudflared_bin", lambda admin_user=None: "cloudflared")
+        monkeypatch.setattr(cloudflare, "_run", MagicMock(return_value=MagicMock(returncode=0)))
+        monkeypatch.setattr(cloudflare, "_show_qr", lambda _url: None)
+
+        proc = MagicMock()
+        proc.stdout = iter(["https://dash.cloudflare.com/login\n"])
+        proc.returncode = 0
+        proc.wait.return_value = 0
+        monkeypatch.setattr(cloudflare.subprocess, "Popen", lambda *args, **kwargs: proc)
+
+        with pytest.raises(RuntimeError, match="certificate was not created") as exc_info:
+            cloudflare.authorize_cloudflare("ubuntu")
+
+        assert str(tmp_path / ".cloudflared" / "cert.pem") in str(exc_info.value)
+        assert "rakkib auth --cloudflare" in str(exc_info.value)
+
+    def test_tunnel_list_failure_after_login(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(cloudflare, "_home_for_user", lambda user: tmp_path)
+        monkeypatch.setattr(cloudflare, "_cloudflared_bin", lambda admin_user=None: "cloudflared")
+        monkeypatch.setattr(cloudflare, "_show_qr", lambda _url: None)
+        cert = tmp_path / ".cloudflared" / "cert.pem"
+        cert.parent.mkdir(parents=True)
+        cert.write_text("cert")
+
+        def run_side_effect(cmd, **kwargs):
+            result = MagicMock()
+            result.stdout = ""
+            if cmd[-1] == "--version":
+                result.returncode = 0
+                result.stderr = ""
+                return result
+            result.returncode = 1
+            result.stderr = "origin cert is invalid"
+            return result
+
+        proc = MagicMock()
+        proc.stdout = iter(["https://dash.cloudflare.com/login\n"])
+        proc.returncode = 0
+        proc.wait.return_value = 0
+        monkeypatch.setattr(cloudflare.subprocess, "Popen", lambda *args, **kwargs: proc)
+        monkeypatch.setattr(cloudflare, "_run", run_side_effect)
+
+        with pytest.raises(RuntimeError, match="tunnel list failed after login") as exc_info:
+            cloudflare.authorize_cloudflare("ubuntu")
+
+        assert "origin cert is invalid" in str(exc_info.value)
+        assert str(cert) in str(exc_info.value)
+
+    def test_successful_login_and_validation(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(cloudflare, "_home_for_user", lambda user: tmp_path)
+        monkeypatch.setattr(cloudflare, "_cloudflared_bin", lambda admin_user=None: "cloudflared")
+        monkeypatch.setattr(cloudflare, "_show_qr", lambda _url: None)
+        cert = tmp_path / ".cloudflared" / "cert.pem"
+        cert.parent.mkdir(parents=True)
+
+        def run_side_effect(cmd, **kwargs):
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = "ID NAME\n"
+            result.stderr = ""
+            return result
+
+        proc = MagicMock()
+        proc.stdout = iter(["https://dash.cloudflare.com/login\n"])
+        proc.returncode = 0
+
+        def wait():
+            cert.write_text("cert")
+            return 0
+
+        proc.wait.side_effect = wait
+        monkeypatch.setattr(cloudflare.subprocess, "Popen", lambda *args, **kwargs: proc)
+        monkeypatch.setattr(cloudflare, "_run", run_side_effect)
+
+        cloudflare.authorize_cloudflare("ubuntu")
+        assert cert.exists()
+
+    def test_sudo_login_uses_admin_home(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(cloudflare.os, "geteuid", lambda: 0)
+        monkeypatch.setattr(cloudflare, "_home_for_user", lambda user: tmp_path)
+        monkeypatch.setattr(cloudflare, "_cloudflared_bin", lambda admin_user=None: "/home/ubuntu/.local/bin/cloudflared")
+        monkeypatch.setattr(cloudflare, "_show_qr", lambda _url: None)
+        cert = tmp_path / ".cloudflared" / "cert.pem"
+        cert.parent.mkdir(parents=True)
+        cert.write_text("cert")
+
+        seen: list[list[str]] = []
+
+        def fake_popen(cmd, **kwargs):
+            seen.append(list(cmd))
+            proc = MagicMock()
+            proc.stdout = iter(["https://dash.cloudflare.com/login\n"])
+            proc.returncode = 0
+            proc.wait.return_value = 0
+            return proc
+
+        monkeypatch.setattr(cloudflare.subprocess, "Popen", fake_popen)
+        monkeypatch.setattr(
+            cloudflare,
+            "_run",
+            lambda cmd, **kwargs: MagicMock(returncode=0, stdout="", stderr=""),
+        )
+
+        cloudflare.authorize_cloudflare("ubuntu")
+
+        assert seen == [
+            [
+                "sudo",
+                "-u",
+                "ubuntu",
+                "-H",
+                "--",
+                "/home/ubuntu/.local/bin/cloudflared",
+                "tunnel",
+                "login",
+            ]
+        ]
+        assert cloudflare.cloudflare_cert_path("ubuntu") == cert
 
 
 class TestSetOwnerMode:
@@ -986,6 +1242,7 @@ class TestRunExistingTunnel:
         state = _make_state(tmp_path)
         cloudflared_dir = tmp_path / "data" / "cloudflared"
         cloudflared_dir.mkdir(parents=True)
+        _write_managed_cert(tmp_path)
         (cloudflared_dir / "test-uuid-123.json").write_text("{}")
 
         from rakkib.docker import DockerError
