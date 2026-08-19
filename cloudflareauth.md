@@ -2,20 +2,20 @@
 
 ## Goal
 
-Make `rakkib init` a deployment-ready installation command. Cloudflare
-authorization happens beforehand through `rakkib auth --cloudflare`, alongside
-the existing sudo and Docker access preparation.
+Make `rakkib setup` the host-tools and Cloudflare authorization command.
+`rakkib init` then selects services and deploys. Cloudflare authorization
+happens during `rakkib setup`, alongside sudo and Docker access preparation.
 
 ## User flow
 
 For a Cloudflare deployment, the operator runs:
 
 ```bash
-rakkib auth --cloudflare
+rakkib setup
 rakkib init
 ```
 
-`rakkib auth --cloudflare` must:
+`rakkib setup` must:
 
 1. Validate sudo without storing the password.
 2. Prepare Docker access for the invoking admin user when needed.
@@ -49,7 +49,7 @@ flow or request another browser approval.
 - Continue copying or using the already-authenticated certificate as required
   by Rakkib's managed cloudflared data directory.
 - If the certificate is missing, unreadable, or `cloudflared tunnel list`
-  fails, stop with actionable guidance to run `rakkib auth --cloudflare`.
+  fails, stop with actionable guidance to run `rakkib setup`.
 - Keep tunnel creation, discovery, DNS routing, credentials-file handling, and
   container deployment in this step.
 
@@ -60,11 +60,11 @@ flow or request another browser approval.
 - Keep the normal browser-login authentication method and new-tunnel strategy
   as state configuration.
 - Explain that browser authorization must be completed with
-  `rakkib auth --cloudflare` before running `rakkib init`.
+  `rakkib setup` before running `rakkib init`.
 
 ### Documentation
 
-- Update the command reference to show `rakkib auth --cloudflare`.
+- Update the command reference to show `rakkib setup`.
 - Document the Cloudflare sequence separately from internal-only installations.
 - Retain the normal-user requirement: Cloudflare credentials belong to the
   admin account, not root.
@@ -73,7 +73,7 @@ flow or request another browser approval.
 
 Add or update tests for:
 
-- successful `rakkib auth --cloudflare` login and validation;
+- successful `rakkib setup` login and validation;
 - cloudflared installation failure, login failure, absent `cert.pem`, and
   failed `tunnel list`, including the diagnostic output;
 - invoking the command through sudo while preserving the configured admin
@@ -81,7 +81,7 @@ Add or update tests for:
 - `rakkib init` and the Cloudflare deployment step never starting an
   interactive login;
 - missing Cloudflare authentication during deployment directing the operator to
-  `rakkib auth --cloudflare`.
+  `rakkib setup`.
 
 Before completion, run:
 

@@ -53,6 +53,7 @@ class QuestionSchema:
 
     schema_version: int
     phase: int
+    stage: str = ""
     reads_state: list[str] = field(default_factory=list)
     writes_state: list[str] = field(default_factory=list)
     fields: list[FieldDef] = field(default_factory=list)
@@ -93,6 +94,7 @@ class QuestionSchema:
         return cls(
             schema_version=raw.get("schema_version", 1),
             phase=raw.get("phase", 0),
+            stage=str(raw.get("stage") or ""),
             reads_state=raw.get("reads_state", []),
             writes_state=raw.get("writes_state", []),
             fields=fields,

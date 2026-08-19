@@ -205,7 +205,7 @@ Rules:
 - Do not run `rakkib web` as root by default.
 - Do not store sudo passwords.
 - Prefer existing non-interactive sudo checks.
-- If sudo is required but unavailable, show the exact terminal command to run, such as `rakkib auth sudo`.
+- If sudo is required but unavailable, show the exact terminal command to run, such as `rakkib setup`.
 - Keep sudo password entry terminal-only for v1.
 
 ## Authentication And Privacy

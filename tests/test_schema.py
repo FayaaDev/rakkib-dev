@@ -20,6 +20,7 @@ def test_load_all_schemas_finds_all_six():
 def test_phase_1_platform_field():
     schema = QuestionSchema.from_file(QUESTIONS_DIR / "01-platform.md")
     assert schema.phase == 1
+    assert schema.stage == "setup"
     assert schema.schema_version == 1
 
     field_map = {f.id: f for f in schema.fields}
@@ -50,6 +51,7 @@ def test_phase_1_platform_field():
 def test_phase_2_identity_fields():
     schema = QuestionSchema.from_file(QUESTIONS_DIR / "02-identity.md")
     assert schema.phase == 2
+    assert schema.stage == "setup"
 
     field_map = {f.id: f for f in schema.fields}
 
@@ -97,6 +99,7 @@ def test_phase_2_identity_fields():
 def test_phase_3_service_catalog_and_rules():
     schema = QuestionSchema.from_file(QUESTIONS_DIR / "03-services.md")
     assert schema.phase == 3
+    assert schema.stage == "init"
 
     assert "foundation_bundle" in schema.service_catalog
     assert len(schema.service_catalog["foundation_bundle"]) == 4
@@ -188,6 +191,7 @@ def test_phase_3_service_catalog_and_rules():
 def test_phase_4_cloudflare_execution_paths():
     schema = QuestionSchema.from_file(QUESTIONS_DIR / "04-cloudflare.md")
     assert schema.phase == 4
+    assert schema.stage == "setup"
 
     field_map = {f.id: f for f in schema.fields}
 
@@ -201,6 +205,7 @@ def test_phase_4_cloudflare_execution_paths():
 def test_phase_5_secrets_and_execution_generated():
     schema = QuestionSchema.from_file(QUESTIONS_DIR / "05-secrets.md")
     assert schema.phase == 5
+    assert schema.stage == "init"
 
     assert len(schema.execution_generated_only) == 1
     assert schema.execution_generated_only[0]["key"] == "IMMICH_VERSION"
@@ -226,6 +231,7 @@ def test_phase_5_secrets_and_execution_generated():
 def test_phase_6_summary_and_confirm():
     schema = QuestionSchema.from_file(QUESTIONS_DIR / "06-confirm.md")
     assert schema.phase == 6
+    assert schema.stage == "confirm"
 
     field_map = {f.id: f for f in schema.fields}
 

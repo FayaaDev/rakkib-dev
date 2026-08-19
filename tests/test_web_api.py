@@ -163,7 +163,7 @@ def test_run_status_blocks_start_when_host_auth_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(State, "resume_phase", lambda self: 7)
     monkeypatch.setattr(
         "rakkib.web.api.check_host_auth_readiness",
-        lambda: HostAuthStatus(False, "sudo_required", "Run `rakkib auth` first."),
+        lambda: HostAuthStatus(False, "sudo_required", "Run `rakkib setup` first."),
     )
     (tmp_path / ".fss-state.yaml").write_text("confirmed: true\n")
     client = _client(tmp_path)
@@ -181,4 +181,4 @@ def test_run_status_blocks_start_when_host_auth_missing(tmp_path, monkeypatch):
     assert status_payload["can_start"] is False
     assert status_payload["host_auth"]["code"] == "sudo_required"
     assert start_response.status_code == 409
-    assert start_response.json()["detail"]["host_auth"]["command"] == "rakkib auth"
+    assert start_response.json()["detail"]["host_auth"]["command"] == "rakkib setup"

@@ -517,7 +517,7 @@ def _chown_path(path: Path, uid: int, gid: int, *, recursive: bool) -> None:
         detail = result.stderr.strip() or result.stdout.strip() or "permission denied"
         raise RuntimeError(
             f"Cannot repair ownership for {path}: {detail}. "
-            "Run `rakkib auth` in the terminal that started the web session, then retry."
+            "Run `rakkib setup` in the terminal that started the web session, then retry."
         )
 
 
@@ -532,7 +532,7 @@ def _ensure_writable_dir(path: Path) -> None:
             detail = result.stderr.strip() or result.stdout.strip() or "permission denied"
             raise RuntimeError(
                 f"Cannot create service data directory {path}: {detail}. "
-                f"Ensure {parent} is writable or run `rakkib auth`, then retry."
+                f"Ensure {parent} is writable or run `rakkib setup`, then retry."
             )
 
     if os.access(path, os.W_OK | os.X_OK):

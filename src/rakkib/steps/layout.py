@@ -37,7 +37,7 @@ def _sudo_chown(path: Path, user: str, *, recursive: bool = False) -> None:
         detail = (result.stderr or result.stdout or "").strip()
         suffix = f" {detail}" if detail else ""
         raise RuntimeError(
-            f"sudo authorization required to repair ownership for {path}.{suffix} Please run `rakkib auth` first."
+            f"sudo authorization required to repair ownership for {path}.{suffix} Please run `rakkib setup` first."
         )
 
 
@@ -73,7 +73,7 @@ def run(state: State) -> None:
         )
         if result.returncode != 0:
             raise RuntimeError(
-                "sudo authorization required to create layout directories. Please run `rakkib auth` first."
+                "sudo authorization required to create layout directories. Please run `rakkib setup` first."
             )
 
         # Set ownership to admin_user where applicable.

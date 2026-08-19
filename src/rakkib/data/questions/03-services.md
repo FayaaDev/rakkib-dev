@@ -7,6 +7,7 @@
 ```yaml
 schema_version: 1
 phase: 3
+stage: init
 reads_state:
   - domain
 writes_state:
@@ -431,7 +432,7 @@ Numeric checklist positions may still be accepted as convenience aliases, but ca
 
 When rendering the checklist, the selectable label must always be the service name shown below (`NocoDB`, `Homepage`, etc.). Use `[✓]` and `[ ]` only as visual state markers. Do not render `selected`, `unselected`, `true`, or `false` as an option label.
 
-Subdomains are automatically set to the defaults from the service catalog for Cloudflare routing. In internal exposure mode, do not prompt for subdomains because Caddy routes are not created. Record all results into `.fss-state.yaml`. Do not advance to `questions/04-cloudflare.md` until recording is complete.
+Subdomains are automatically set to the defaults from the service catalog for Cloudflare routing. In internal exposure mode, do not prompt for subdomains because Caddy routes are not created. Record all results into `.fss-state.yaml`. Do not advance to `questions/05-secrets.md` until recording is complete.
 
 ---
 

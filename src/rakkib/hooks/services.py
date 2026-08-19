@@ -202,7 +202,7 @@ def _repair_ownership(path: Path) -> None:
         detail = result.stderr.strip() or result.stdout.strip() or "permission denied"
         raise RuntimeError(
             f"Cannot write generated service artifact {path}: {detail}. "
-            "Run `rakkib auth` in the terminal that started the web session, then retry."
+            "Run `rakkib setup` in the terminal that started the web session, then retry."
         )
 
 

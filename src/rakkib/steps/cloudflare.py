@@ -91,7 +91,7 @@ def _auth_required_error(message: str, admin_user: str | None = None, detail: st
     parts = [message.rstrip("."), f"Expected certificate: {expected}."]
     if detail:
         parts.append(detail.strip())
-    parts.append("Run `rakkib auth --cloudflare` as the admin user, then retry.")
+    parts.append("Run `rakkib setup` as the admin user, then retry.")
     return RuntimeError(" ".join(part for part in parts if part))
 
 
@@ -717,7 +717,7 @@ def authorize_cloudflare(admin_user: str | None) -> None:
     if not admin_user or admin_user == "root":
         raise RuntimeError(
             "Cloudflare authorization must run as the admin user, not root. "
-            "Run `rakkib auth --cloudflare` as the sudo-capable admin account."
+            "Run `rakkib setup` as the sudo-capable admin account."
         )
 
     cert_path = cloudflare_cert_path(admin_user)
@@ -784,7 +784,7 @@ def authorize_cloudflare(admin_user: str | None) -> None:
         raise RuntimeError(
             f"Cloudflare certificate was not created at {cert_path}. "
             "Approve access in the browser, select the domain, then retry "
-            "`rakkib auth --cloudflare`."
+            "`rakkib setup`."
         )
 
     list_result = _run(
@@ -855,7 +855,7 @@ def run(state: State) -> None:
     token_env = dict(cloudflared_env)
     previous_tunnel_name = tunnel_name
 
-    # 4-5. Handle auth methods. Browser login happens in `rakkib auth --cloudflare`.
+    # 4-5. Handle auth methods. Browser login happens in `rakkib setup`.
     if auth_method == "browser_login":
         if not cert_path.exists():
             default_cert = _find_cloudflared_artifact("cert.pem", admin_user=admin_user)
@@ -999,7 +999,7 @@ def run(state: State) -> None:
             elif not creds_host_path.exists():
                 raise RuntimeError(
                     "Created a fresh Cloudflare tunnel but could not locate its credentials file. "
-                    "Run `rakkib auth --cloudflare` and re-run rakkib pull."
+                    "Run `rakkib setup` and re-run rakkib pull."
                 )
         else:
             searched_paths = ", ".join(
@@ -1008,7 +1008,7 @@ def run(state: State) -> None:
             raise RuntimeError(
                 f"Tunnel credentials file not found at {creds_host_path}, "
                 f"or any searched cloudflared path ({searched_paths}). "
-                "Run `rakkib auth --cloudflare` and ensure the tunnel was created in the correct account."
+                "Run `rakkib setup` and ensure the tunnel was created in the correct account."
             )
 
     # 12. Apply explicit modes for the dir, config, and credentials. Re-run

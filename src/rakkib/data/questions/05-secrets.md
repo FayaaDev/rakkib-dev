@@ -7,6 +7,7 @@
 ```yaml
 schema_version: 1
 phase: 5
+stage: init
 reads_state:
   - foundation_services
   - selected_services

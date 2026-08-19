@@ -161,7 +161,7 @@ class TestCheckDocker:
     def test_missing_on_mac_points_to_rakkib_auth(self, _cmd: MagicMock, _system: MagicMock):
         result = check_docker()
         assert result.status == "fail"
-        assert "rakkib auth" in result.message
+        assert "rakkib setup" in result.message
 
     @patch("rakkib.doctor._command_exists", return_value=True)
     @patch("rakkib.doctor.docker_run")
@@ -458,7 +458,7 @@ class TestAttemptFixDocker:
     ):
         mock_run.return_value = MagicMock(returncode=1, stderr="sudo: a password is required")
         msg = attempt_fix_docker()
-        assert "rakkib auth" in msg
+        assert "rakkib setup" in msg
         mock_run.assert_called_once_with(["sudo", "-n", "true"], capture_output=True, text=True)
 
     @patch("platform.system", return_value="Linux")
@@ -547,7 +547,7 @@ class TestDockerPermissionRepair:
 
     @patch("rakkib.doctor.os.execvp")
     @patch("rakkib.doctor.prompt_confirm")
-    @patch("rakkib.doctor.prepare_docker_access", return_value="Run `rakkib auth` from an interactive terminal.")
+    @patch("rakkib.doctor.prepare_docker_access", return_value="Run `rakkib setup` from an interactive terminal.")
     def test_does_not_offer_rerun_when_group_repair_fails(
         self,
         _repair: MagicMock,
@@ -563,7 +563,7 @@ class TestDockerPermissionRepair:
         console = MagicMock()
         assert handle_docker_permission_denied(console, "tester") is False
         rendered = "\n".join(call.args[0] for call in console.print.call_args_list)
-        assert "rakkib auth" in rendered
+        assert "rakkib setup" in rendered
         assert "newgrp docker" not in rendered
 
 

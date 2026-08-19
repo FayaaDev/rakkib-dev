@@ -70,7 +70,7 @@ Do not hand-roll the workflow; the skill is the contract for registry fields, te
 - `exposure_mode: internal` is the default private/LAN mode. It does not deploy Caddy routes or Cloudflare DNS/tunnel resources.
 - `exposure_mode: cloudflare` publishes explicit service hostnames through Caddy and Cloudflare.
 - `rakkib web` runs the browser setup UI locally; `rakkib web --lan` binds to `0.0.0.0`, prints a tokenized LAN URL, and can drive deployment changes through `rakkib sync-services`.
-- `rakkib auth` validates sudo/Docker access for the current terminal. Do not document a sudo subcommand unless the CLI actually adds one.
+- `rakkib setup` validates sudo/Docker access and records identity/Cloudflare settings. Do not document a sudo subcommand unless the CLI actually adds one.
 - `rakkib uninstall` is aggressive and removes Rakkib-managed containers, state, Cloudflare artifacts, checkout, and configured data-root artifacts.
 
 ## How To Handle User Requests

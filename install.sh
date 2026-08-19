@@ -684,7 +684,7 @@ If your shell cannot find rakkib yet, run one of:
   source ~/.zshrc   |   source ~/.zprofile   |   source ~/.profile
 
 To install local services on macOS, run:
-  rakkib auth
+  rakkib setup
 
 To uninstall:
   rakkib uninstall --yes
@@ -699,14 +699,14 @@ Rakkib is installed.
 Managed checkout: ${INSTALL_DIR}
 
 Next:
+  rakkib setup
   rakkib init
-  rakkib pull
 
 If your shell cannot find rakkib yet, run one of:
   source ~/.bashrc   |   source ~/.zshrc   |   source ~/.profile
 
 If Docker needs setup, run:
-  rakkib auth
+  rakkib setup
 
 To uninstall:
   rakkib uninstall --yes

@@ -7,6 +7,7 @@
 ```yaml
 schema_version: 1
 phase: 4
+stage: setup
 reads_state:
   - server_name
   - admin_user
@@ -54,9 +55,9 @@ This phase records the exposure mode and, when selected, the intended Cloudflare
 
 This phase only determines the intended Cloudflare setup. It does not create the tunnel yet. Tunnel creation, DNS routing, and credentials placement happen later in the Cloudflare deployment step.
 
-Browser authorization must be completed with `rakkib auth --cloudflare` before running `rakkib init`. The Cloudflare step uses the already-approved certificate; it does not open a browser-approval handoff.
+Browser authorization is completed during `rakkib setup`. The Cloudflare deployment step uses the already-approved certificate; it does not open a browser-approval handoff.
 
-Do not ask for a Cloudflare API token during the normal flow. The default and recommended path is Cloudflare browser login via `rakkib auth --cloudflare`.
+Do not ask for a Cloudflare API token during the normal flow. The default and recommended path is Cloudflare browser login via `rakkib setup`.
 
 ---
 
@@ -65,7 +66,7 @@ Do not ask for a Cloudflare API token during the normal flow. The default and re
 The exposure mode was recorded in Phase 2. If `cloudflare` is selected:
 
 - Always create a new tunnel (`cloudflare.tunnel_strategy: new`).
-- Record Cloudflare browser login as the authentication method (`cloudflare.auth_method: browser_login`). Authorization itself is completed with `rakkib auth --cloudflare` before `rakkib init`.
+- Record Cloudflare browser login as the authentication method (`cloudflare.auth_method: browser_login`). Authorization itself is completed with `rakkib setup`.
 - Record headless as the intended login style (`cloudflare.headless: true`).
 - Tunnel name is derived from the admin username (`{{admin_user}}-tunnel`).
 - SSH subdomain is always `ssh`.

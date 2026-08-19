@@ -7,6 +7,7 @@
 ```yaml
 schema_version: 1
 phase: 1
+stage: setup
 reads_state: []
 writes_state:
   - platform

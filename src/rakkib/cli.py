@@ -1,6 +1,6 @@
 """Rakkib CLI entrypoint.
 
-Commands: init, pull, update, doctor, status, add, restart, uninstall, privileged, auth, web
+Commands: setup, init, pull, update, doctor, status, add, restart, uninstall, privileged, auth, web
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ from rakkib.doctor import (
     attempt_fix_docker,
     attempt_start_colima,
     check_disk,
+    check_docker_prereq,
     check_ram,
     docker_access_commands,
     docker_access_user,
@@ -144,10 +145,10 @@ def _prepare_host_authorization(ctx: click.Context) -> bool:
             try:
                 docker_run(["info"])
             except DockerError as retry_exc:
-                console.print("[red]Docker is not ready. Run `rakkib auth`, then try again.[/red]")
+                console.print("[red]Docker is not ready. Run `rakkib setup`, then try again.[/red]")
                 console.print(f"[dim]{retry_exc or exc}[/dim]")
                 return False
-        console.print("[green]Re-run `rakkib pull`.[/green]")
+        console.print("[green]Host tools are ready.[/green]")
         return True
 
     if shutil.which("sudo") is None:
@@ -170,7 +171,7 @@ def _prepare_host_authorization(ctx: click.Context) -> bool:
     user = docker_access_user(state)
     try:
         docker_run(["info"])
-        console.print("[green]Re-run `rakkib pull`.[/green]")
+        console.print("[green]Host tools are ready.[/green]")
         return True
     except DockerError as exc:
         if not is_docker_permission_error(exc.stderr or str(exc)):
@@ -183,7 +184,7 @@ def _prepare_host_authorization(ctx: click.Context) -> bool:
         console.print("[dim]Manual setup:[/dim]")
         console.print(f"[dim]{docker_access_commands(user)}[/dim]")
         return False
-    console.print("[green]Re-run `rakkib pull`.[/green]")
+    console.print("[green]Host tools are ready.[/green]")
     return True
 
 
@@ -196,13 +197,28 @@ def _run_auth_setup(ctx: click.Context, cloudflare: bool = False) -> bool:
     return True
 
 
+def _setup_identity_complete(state: State) -> bool:
+    """Return True when setup has recorded the identity needed by init."""
+    required = ("platform", "server_name", "exposure_mode", "domain", "admin_user")
+    if not all(state.has(key) for key in required):
+        return False
+    if state.get("exposure_mode") == "cloudflare":
+        return bool(state.get("cloudflare.auth_method"))
+    return True
+
+
+def _init_interview_complete(state: State) -> bool:
+    """Return True when services and secrets have been recorded."""
+    return bool(state.has("secrets.mode") and (state.has("foundation_services") or state.has("selected_services")))
+
+
 def _prompt_web_host_auth(ctx: click.Context) -> None:
     status = check_host_auth_readiness()
     if status.ok or not _stdin_is_interactive():
         return
 
     console.print(f"[yellow]{status.message}[/yellow]")
-    if status.command and prompt_confirm("Run `rakkib auth` now?", default=True):
+    if status.command and prompt_confirm("Run `rakkib setup` now?", default=True):
         _run_auth_setup(ctx)
         status = check_host_auth_readiness()
         if status.ok:
@@ -791,12 +807,41 @@ def cli(ctx: click.Context) -> None:
 
 
 @cli.command()
+@click.pass_context
+def setup(ctx: click.Context) -> None:
+    """Install host tools and record identity plus Cloudflare settings."""
+    console.print("[bold green]Rakkib setup[/bold green]")
+
+    if not _prepare_host_authorization(ctx):
+        ctx.exit(1)
+
+    repo_dir = ctx.obj["repo_dir"]
+    state_path = default_state_path(repo_dir)
+    state = State.load(state_path)
+
+    if not check_docker_prereq(state, console=console):
+        ctx.exit(1)
+
+    state = run_interview(state, questions_dir=repo_dir / "data" / "questions", stages={"setup"})
+    state.save(state_path)
+
+    if not _setup_identity_complete(state):
+        console.print("[yellow]Setup interview is incomplete. Run `rakkib setup` again.[/yellow]")
+        ctx.exit(1)
+
+    if cloudflare_enabled(state) and not _run_cloudflare_auth(ctx):
+        ctx.exit(1)
+
+    console.print("[green]Setup complete. Run `rakkib init` to choose services and deploy.[/green]")
+
+
+@cli.command()
 @click.option("--resume-after-docker-access", is_flag=True, hidden=True)
 @click.pass_context
 def init(ctx: click.Context, resume_after_docker_access: bool) -> None:
-    """Gather configuration via interview and save to .fss-state.yaml.
+    """Choose services and secrets, then deploy.
 
-    Confirmed configurations immediately install everything.
+    Requires `rakkib setup`. Confirmed configurations immediately install everything.
     """
     console.print("[bold green]Rakkib init[/bold green]")
 
@@ -809,7 +854,12 @@ def init(ctx: click.Context, resume_after_docker_access: bool) -> None:
         if not state.is_confirmed():
             raise click.UsageError("Cannot resume initialization without a confirmed state.")
     else:
-        state = run_interview(state, questions_dir=repo_dir / "data" / "questions")
+        if not state.is_confirmed() and not _setup_identity_complete(state):
+            console.print("[bold red]Run [bold]rakkib setup[/bold] first.[/bold red]")
+            ctx.exit(1)
+        state = run_interview(state, questions_dir=repo_dir / "data" / "questions", stages={"init"})
+        if _init_interview_complete(state):
+            state.set("confirmed", True)
 
     state.save(state_path)
     if state.is_confirmed() and not ensure_prereqs(state, console=console, cloudflared_bin=_cloudflared_bin()):
@@ -848,7 +898,7 @@ def pull(ctx: click.Context, service: str | None) -> None:
         services_step._ensure_service_runtime_env(state)
 
     if not service and not state.is_confirmed():
-        console.print("[bold red]State is not confirmed.[/bold red] Run [bold]rakkib init[/bold] first.")
+        console.print("[bold red]State is not confirmed.[/bold red] Run [bold]rakkib setup[/bold] then [bold]rakkib init[/bold] first.")
         return
 
     if not ensure_prereqs(state, console=console, cloudflared_bin=_cloudflared_bin()):
@@ -1403,11 +1453,12 @@ def uninstall(ctx: click.Context) -> None:
     )
 
 
-@cli.command()
+@cli.command(hidden=True)
 @click.option("--cloudflare", is_flag=True, help="Authorize Cloudflare browser login for this admin user.")
 @click.pass_context
 def auth(ctx: click.Context, cloudflare: bool) -> None:
-    """Validate sudo and prepare Docker access when needed."""
+    """Deprecated alias for host authorization. Use `rakkib setup`."""
+    console.print("[yellow]`rakkib auth` is now `rakkib setup`.[/yellow]")
     if not _run_auth_setup(ctx, cloudflare=cloudflare):
         ctx.exit(1)
 

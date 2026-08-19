@@ -7,6 +7,7 @@
 ```yaml
 schema_version: 1
 phase: 2
+stage: setup
 reads_state:
   - platform
   - privilege_mode

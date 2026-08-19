@@ -146,7 +146,7 @@ def test_layout_run_sudo_failure_raises(tmp_path):
     with patch("os.geteuid", return_value=1000):
         with patch("rakkib.steps.layout.subprocess.run") as mock_run:
             mock_run.return_value.returncode = 1
-            with pytest.raises(RuntimeError, match="rakkib auth"):
+            with pytest.raises(RuntimeError, match="rakkib setup"):
                 layout.run(state)
 
 

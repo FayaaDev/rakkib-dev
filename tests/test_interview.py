@@ -209,6 +209,40 @@ class TestRunInterview:
         assert result.to_dict() == {}
         assert not state_path.exists()
 
+    @patch("rakkib.interview.load_all_schemas")
+    @patch("rakkib.interview._run_phase")
+    def test_stages_filter_runs_only_matching_schemas(self, mock_run_phase, mock_load):
+        setup_schema = MagicMock(phase=2, stage="setup")
+        init_schema = MagicMock(phase=3, stage="init")
+        mock_load.return_value = [setup_schema, init_schema]
+
+        state = State({"platform": "linux", "server_name": "test"})
+        run_interview(state, stages={"init"})
+
+        mock_run_phase.assert_called_once_with(init_schema, state)
+
+    @patch("rakkib.interview.load_all_schemas")
+    @patch("rakkib.interview.prompt_select", return_value=True)
+    @patch("rakkib.interview._run_phase")
+    def test_init_start_over_keeps_setup_identity(self, mock_run_phase, mock_select, mock_load):
+        init_schema = MagicMock(phase=3, stage="init")
+        mock_load.return_value = [init_schema]
+        state = State(
+            {
+                "confirmed": True,
+                "server_name": "keep-me",
+                "foundation_services": ["homepage"],
+                "secrets": {"mode": "generate"},
+            }
+        )
+
+        result = run_interview(state, stages={"init"})
+
+        assert result.get("server_name") == "keep-me"
+        assert not result.has("foundation_services")
+        assert not result.has("confirmed")
+        mock_run_phase.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # _run_field

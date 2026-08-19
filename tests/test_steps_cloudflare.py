@@ -575,7 +575,7 @@ class TestRun:
             patch("rakkib.steps.cloudflare._find_cloudflared_artifact", return_value=None),
         ):
             mock_run.side_effect = _subprocess_side_effect()
-            with pytest.raises(RuntimeError, match="rakkib auth --cloudflare"):
+            with pytest.raises(RuntimeError, match="rakkib setup"):
                 cloudflare.run(state)
 
         mock_popen.assert_not_called()
@@ -731,7 +731,7 @@ class TestRun:
             patch("rakkib.steps.cloudflare._find_unreadable_cloudflared_artifact", return_value=None),
         ):
             mock_run.side_effect = _subprocess_side_effect()
-            with pytest.raises(RuntimeError, match="rakkib auth --cloudflare"):
+            with pytest.raises(RuntimeError, match="rakkib setup"):
                 cloudflare.run(state)
 
         mock_popen.assert_not_called()
@@ -750,7 +750,7 @@ class TestRun:
             patch("rakkib.steps.cloudflare._find_unreadable_cloudflared_artifact", return_value=denied),
         ):
             mock_run.side_effect = _subprocess_side_effect()
-            with pytest.raises(RuntimeError, match="rakkib auth --cloudflare") as exc_info:
+            with pytest.raises(RuntimeError, match="rakkib setup") as exc_info:
                 cloudflare.run(state)
 
         assert str(denied) in str(exc_info.value)
@@ -770,7 +770,7 @@ class TestRun:
             patch("rakkib.steps.cloudflare._run", side_effect=run_side_effect),
             patch("rakkib.steps.cloudflare.subprocess.Popen") as mock_popen,
         ):
-            with pytest.raises(RuntimeError, match="rakkib auth --cloudflare") as exc_info:
+            with pytest.raises(RuntimeError, match="rakkib setup") as exc_info:
                 cloudflare.run(state)
 
         assert "failed to load origin cert" in str(exc_info.value)
@@ -854,7 +854,7 @@ class TestAuthorizeCloudflare:
             cloudflare.authorize_cloudflare("ubuntu")
 
         assert str(tmp_path / ".cloudflared" / "cert.pem") in str(exc_info.value)
-        assert "rakkib auth --cloudflare" in str(exc_info.value)
+        assert "rakkib setup" in str(exc_info.value)
 
     def test_tunnel_list_failure_after_login(self, tmp_path, monkeypatch):
         monkeypatch.setattr(cloudflare, "_home_for_user", lambda user: tmp_path)

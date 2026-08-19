@@ -29,9 +29,9 @@ class DockerError(Exception):
 
 
 DOCKER_PERMISSION_HINT_LINUX = (
-    "Docker needs permission for this user. Run `rakkib auth`, then open a new shell and try again."
+    "Docker needs permission for this user. Run `rakkib setup`, then open a new shell and try again."
 )
-DOCKER_PERMISSION_HINT_MAC = "Docker is not ready. Run `rakkib auth`, then try again."
+DOCKER_PERMISSION_HINT_MAC = "Docker is not ready. Run `rakkib setup`, then try again."
 
 
 def _docker_timeout() -> int:

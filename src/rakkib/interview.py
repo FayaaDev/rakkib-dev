@@ -51,25 +51,51 @@ def _split_schema_command(command: Any) -> list[str]:
     return shlex.split(command)
 
 
-def run_interview(state: State, questions_dir: Path | str = "questions") -> State:
-    """Drive Phases 1-6 using embedded AgentSchema blocks.
+_INIT_STATE_KEYS = (
+    "foundation_services",
+    "selected_services",
+    "subdomains",
+    "secrets",
+    "confirmed",
+)
+
+
+def run_interview(
+    state: State,
+    questions_dir: Path | str = "questions",
+    *,
+    stages: set[str] | None = None,
+) -> State:
+    """Drive interview phases using embedded AgentSchema blocks.
 
     Resume is automatic: load state, find first phase with unset required keys,
-    start there. If ``confirmed: true``, ask once whether to start over.
+    start there. If ``confirmed: true`` and init stages are included, ask once
+    whether to reconfigure services.
     """
     schemas = load_all_schemas(questions_dir)
+    if stages:
+        schemas = [schema for schema in schemas if schema.stage in stages]
 
-    if state.is_confirmed():
+    if state.is_confirmed() and (stages is None or "init" in stages):
         overwrite = _prompt_bool(
             "An existing confirmed state was found. Start over?",
             default=False,
         )
         if overwrite:
-            state = State({}, path=state.path)
+            if stages == {"init"}:
+                for key in _INIT_STATE_KEYS:
+                    state.delete(key)
+            else:
+                state = State({}, path=state.path)
 
     ensure_state_platform(state)
 
-    resume = 1 if state.has("confirmed") and not state.is_confirmed() else state.resume_phase()
+    if state.has("confirmed") and not state.is_confirmed():
+        resume = 1
+    elif stages:
+        resume = _resume_phase(state, schemas)
+    else:
+        resume = state.resume_phase()
     try:
         for schema in schemas:
             if schema.phase < resume:
@@ -77,9 +103,20 @@ def run_interview(state: State, questions_dir: Path | str = "questions") -> Stat
             _run_phase(schema, state)
             _save_if_bound(state)
     except InterviewExit:
-        _discard_state(state)
+        if stages == {"init"}:
+            _save_if_bound(state)
+        else:
+            _discard_state(state)
 
     return state
+
+
+def _resume_phase(state: State, schemas: list[QuestionSchema]) -> int:
+    """Return the first incomplete phase among *schemas*, or 7 if complete."""
+    for schema in schemas:
+        if not state.is_phase_complete(schema.phase):
+            return schema.phase
+    return 7
 
 
 def _save_if_bound(state: State) -> None:

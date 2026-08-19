@@ -11,7 +11,7 @@ import subprocess
 from rakkib.docker import DockerError, docker_run, is_docker_permission_error
 
 
-AUTH_COMMAND = "rakkib auth"
+AUTH_COMMAND = "rakkib setup"
 
 
 @dataclass(frozen=True)
@@ -45,7 +45,7 @@ def check_host_auth_readiness() -> HostAuthStatus:
             return HostAuthStatus(
                 False,
                 "docker_missing",
-                "Docker needs setup. Run `rakkib auth`, then restart `rakkib web`.",
+                "Docker needs setup. Run `rakkib setup`, then restart `rakkib web`.",
             )
 
         try:
@@ -54,7 +54,7 @@ def check_host_auth_readiness() -> HostAuthStatus:
             return HostAuthStatus(
                 False,
                 "docker_unavailable",
-                f"Docker is not ready. Run `rakkib auth`, then restart `rakkib web`: {exc}",
+                f"Docker is not ready. Run `rakkib setup`, then restart `rakkib web`: {exc}",
                 requires_restart=True,
             )
 
@@ -63,7 +63,7 @@ def check_host_auth_readiness() -> HostAuthStatus:
             return HostAuthStatus(
                 False,
                 "compose_unavailable",
-                "Docker needs setup. Run `rakkib auth`, then restart `rakkib web`.",
+                "Docker needs setup. Run `rakkib setup`, then restart `rakkib web`.",
                 requires_restart=True,
             )
 
@@ -82,7 +82,7 @@ def check_host_auth_readiness() -> HostAuthStatus:
         return HostAuthStatus(
             False,
             "sudo_required",
-            "Authorization is needed. Run `rakkib auth`, then recheck.",
+            "Authorization is needed. Run `rakkib setup`, then recheck.",
         )
 
     if shutil.which("docker") is None:
@@ -101,7 +101,7 @@ def check_host_auth_readiness() -> HostAuthStatus:
             return HostAuthStatus(
                 False,
                 "docker_permission",
-                "Docker needs permission. Run `rakkib auth`, then restart `rakkib web` from a new terminal.",
+                "Docker needs permission. Run `rakkib setup`, then restart `rakkib web` from a new terminal.",
                 requires_restart=True,
             )
         return HostAuthStatus(
@@ -117,7 +117,7 @@ def check_host_auth_readiness() -> HostAuthStatus:
         return HostAuthStatus(
             False,
             "docker_permission",
-            "Docker needs permission. Run `rakkib auth`, then restart `rakkib web` from a new terminal.",
+            "Docker needs permission. Run `rakkib setup`, then restart `rakkib web` from a new terminal.",
             requires_restart=True,
         )
 

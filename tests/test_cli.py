@@ -27,18 +27,25 @@ class TestInit:
             ]
         }
 
+    def test_init_requires_setup(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+
+        with patch("rakkib.cli.run_interview") as mock_run:
+            result = runner.invoke(cli, ["init"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 1
+        assert "rakkib setup" in result.output
+        mock_run.assert_not_called()
+
     def test_init_runs_interview(self, tmp_path: Path):
         runner = CliRunner()
         repo_dir = tmp_path / "repo"
         repo_dir.mkdir()
-        questions_dir = repo_dir / "questions"
-        questions_dir.mkdir()
-
-        # Create minimal question files so load_all_schemas works
-        (questions_dir / "01-platform.md").write_text(
-            "## AgentSchema\n```yaml\nschema_version: 1\nphase: 1\nfields:\n"
-            "  - id: platform\n    type: single_select\n    prompt: Platform?\n"
-            "    canonical_values: [linux, mac]\n    records: [platform]\n```\n"
+        (repo_dir / ".fss-state.yaml").write_text(
+            "platform: linux\nserver_name: test\nexposure_mode: internal\n"
+            "domain: localhost\nadmin_user: ubuntu\n"
         )
 
         with (
@@ -56,7 +63,37 @@ class TestInit:
         assert "Rakkib init" in result.output
         assert "State is not confirmed" in result.output
         mock_run.assert_called_once()
+        assert mock_run.call_args.kwargs["stages"] == {"init"}
         mock_prereqs.assert_not_called()
+
+    def test_init_auto_confirms_after_services_and_secrets(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+        (repo_dir / ".fss-state.yaml").write_text(
+            "platform: linux\nserver_name: test\nexposure_mode: internal\n"
+            "domain: localhost\nadmin_user: ubuntu\n"
+        )
+
+        with (
+            patch("rakkib.cli.run_interview") as mock_run,
+            patch("rakkib.cli.ensure_prereqs", return_value=True),
+            patch("rakkib.cli._run_steps", return_value=True) as mock_steps,
+            patch("rakkib.cli._persist_deployed_selection"),
+        ):
+            mock_run.return_value = State(
+                {
+                    "platform": "linux",
+                    "foundation_services": ["homepage"],
+                    "secrets": {"mode": "generate"},
+                }
+            )
+            result = runner.invoke(cli, ["init"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 0
+        mock_steps.assert_called_once()
+        saved = State.load(repo_dir / ".fss-state.yaml")
+        assert saved.is_confirmed()
 
     def test_init_confirmed_state_goes_through_interview(self, tmp_path: Path):
         runner = CliRunner()
@@ -287,6 +324,80 @@ class TestInit:
 
         assert result.exit_code == 0
         mock_remove.assert_not_called()
+
+
+class TestSetup:
+    def test_setup_runs_host_tools_and_identity_interview(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+
+        with (
+            patch("rakkib.cli._prepare_host_authorization", return_value=True) as mock_host,
+            patch("rakkib.cli.check_docker_prereq", return_value=True) as mock_docker,
+            patch("rakkib.cli.run_interview") as mock_interview,
+            patch("rakkib.cli._run_cloudflare_auth") as mock_cf,
+        ):
+            mock_interview.return_value = State(
+                {
+                    "platform": "linux",
+                    "server_name": "test",
+                    "exposure_mode": "internal",
+                    "domain": "localhost",
+                    "admin_user": "ubuntu",
+                }
+            )
+            result = runner.invoke(cli, ["setup"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 0
+        assert "Rakkib setup" in result.output
+        assert "rakkib init" in result.output
+        mock_host.assert_called_once()
+        mock_docker.assert_called_once()
+        mock_interview.assert_called_once()
+        assert mock_interview.call_args.kwargs["stages"] == {"setup"}
+        mock_cf.assert_not_called()
+
+    def test_setup_authorizes_cloudflare_when_selected(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+
+        with (
+            patch("rakkib.cli._prepare_host_authorization", return_value=True),
+            patch("rakkib.cli.check_docker_prereq", return_value=True),
+            patch("rakkib.cli.run_interview") as mock_interview,
+            patch("rakkib.cli._run_cloudflare_auth", return_value=True) as mock_cf,
+        ):
+            mock_interview.return_value = State(
+                {
+                    "platform": "linux",
+                    "server_name": "test",
+                    "exposure_mode": "cloudflare",
+                    "domain": "example.com",
+                    "admin_user": "ubuntu",
+                    "cloudflare": {"auth_method": "browser_login"},
+                }
+            )
+            result = runner.invoke(cli, ["setup"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 0
+        mock_cf.assert_called_once()
+
+    def test_setup_incomplete_interview_exits(self, tmp_path: Path):
+        runner = CliRunner()
+        repo_dir = tmp_path / "repo"
+        repo_dir.mkdir()
+
+        with (
+            patch("rakkib.cli._prepare_host_authorization", return_value=True),
+            patch("rakkib.cli.check_docker_prereq", return_value=True),
+            patch("rakkib.cli.run_interview", return_value=State({"platform": "linux"})),
+        ):
+            result = runner.invoke(cli, ["setup"], obj={"repo_dir": repo_dir})
+
+        assert result.exit_code == 1
+        assert "incomplete" in result.output
 
 
 class TestUninstall:
@@ -1340,7 +1451,7 @@ class TestAuth:
 
         assert result.exit_code == 0
         assert "Preparing Docker" in result.output
-        assert "Re-run `rakkib pull`" in result.output
+        assert "Host tools are ready" in result.output
 
     def test_auth_help(self, tmp_path: Path):
         runner = CliRunner()
@@ -1377,7 +1488,7 @@ class TestAuth:
             result = runner.invoke(cli, ["auth"], obj={"repo_dir": repo_dir})
 
         assert result.exit_code == 0
-        assert "Re-run `rakkib pull`" in result.output
+        assert "Host tools are ready" in result.output
         assert ["sudo", "-n", "usermod", "-aG", "docker", "ubuntu"] in [
             call.args[0] for call in mock_run.call_args_list
         ]
@@ -1396,7 +1507,7 @@ class TestAuth:
             result = runner.invoke(cli, ["auth"], obj={"repo_dir": repo_dir})
 
         assert result.exit_code == 0
-        assert "Re-run `rakkib pull`" in result.output
+        assert "Host tools are ready" in result.output
 
 
 class TestAuthCloudflare:
@@ -1636,7 +1747,7 @@ class TestWeb:
 
     def test_web_prompts_for_host_auth_when_blocked(self, tmp_path: Path):
         runner = CliRunner()
-        blocked = HostAuthStatus(False, "sudo_required", "Run `rakkib auth` first.")
+        blocked = HostAuthStatus(False, "sudo_required", "Run `rakkib setup` first.")
         ready = HostAuthStatus(True, "ready", "ready", command=None)
 
         with (
@@ -1654,7 +1765,7 @@ class TestWeb:
             )
 
         assert result.exit_code == 0
-        mock_prompt.assert_called_once_with("Run `rakkib auth` now?", default=True)
+        mock_prompt.assert_called_once_with("Run `rakkib setup` now?", default=True)
         mock_auth.assert_called_once()
         assert "Host authorization is ready" in result.output
         assert mock_run.call_args.kwargs["host"] == "127.0.0.1"

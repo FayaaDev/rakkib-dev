@@ -86,7 +86,7 @@ def attempt_start_colima() -> str:
     _ensure_macos_tool_path()
     colima = _macos_tool_cmd("colima")
     if colima is None:
-        return "Docker is not ready. Run `rakkib auth`, then try again."
+        return "Docker is not ready. Run `rakkib setup`, then try again."
     result = subprocess.run([colima, "start"], capture_output=True, text=True)
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
@@ -234,7 +234,7 @@ def _sudo_install_ready() -> str | None:
     result = subprocess.run(["sudo", "-n", "true"], capture_output=True, text=True)
     if result.returncode == 0:
         return None
-    return "Run `rakkib auth` from an interactive terminal before `rakkib pull` so Docker can be installed with sudo."
+    return "Run `rakkib setup` from an interactive terminal before `rakkib pull` so Docker can be installed with sudo."
 
 
 def _normalize_arch(raw: str) -> str | None:
@@ -412,7 +412,7 @@ def check_disk(data_root: str) -> CheckResult:
 def check_docker() -> CheckResult:
     if not _command_exists("docker"):
         if platform.system() == "Darwin":
-            return CheckResult("docker", "fail", True, "Docker is missing; run `rakkib auth`.")
+            return CheckResult("docker", "fail", True, "Docker is missing; run `rakkib setup`.")
         return CheckResult("docker", "fail", True, "docker command is missing")
     try:
         docker_run(["info"])
@@ -443,18 +443,18 @@ def prepare_docker_access(user: str, *, validate_sudo: bool = True) -> str:
         return "Rakkib is running as root; Docker is ready."
     if sys.platform != "linux":
         if sys.platform == "darwin":
-            return "Run `rakkib auth`, then try again."
-        return "Run `rakkib auth` from a supported Linux or macOS host."
+            return "Run `rakkib setup`, then try again."
+        return "Run `rakkib setup` from a supported Linux or macOS host."
     if shutil.which("sudo") is None:
-        return "sudo is required. Install sudo, then run `rakkib auth`."
+        return "sudo is required. Install sudo, then run `rakkib setup`."
 
     if validate_sudo and sys.stdin.isatty():
         print("Rakkib needs sudo once to prepare Docker.", file=sys.stderr)
         sudo_check = subprocess.run(["sudo", "-v"])
         if sudo_check.returncode != 0:
-            return "Sudo validation failed. Run `rakkib auth` from an interactive terminal."
+            return "Sudo validation failed. Run `rakkib setup` from an interactive terminal."
     elif validate_sudo:
-        return "Run `rakkib auth` from an interactive terminal to prepare Docker access."
+        return "Run `rakkib setup` from an interactive terminal to prepare Docker access."
 
     commands = [
         ["sudo", "-n", "groupadd", "-f", "docker"],
@@ -496,7 +496,7 @@ def _offer_docker_group_rerun(console) -> None:
 def handle_docker_permission_denied(console, user: str) -> bool:
     if platform.system() == "Darwin":
         console.print("[bold red]Docker is installed, but it is not ready yet.[/bold red]")
-        console.print("[yellow]Run `rakkib auth`, then try again.[/yellow]")
+        console.print("[yellow]Run `rakkib setup`, then try again.[/yellow]")
         return False
 
     console.print("[bold red]Docker needs permission for this user.[/bold red]")
@@ -505,7 +505,7 @@ def handle_docker_permission_denied(console, user: str) -> bool:
     if repair_message.startswith("Docker is ready"):
         _offer_docker_group_rerun(console)
     console.print("[yellow]Open a new shell, then rerun Rakkib.[/yellow]")
-    console.print("[dim]Setup command: `rakkib auth`[/dim]")
+    console.print("[dim]Setup command: `rakkib setup`[/dim]")
     return False
 
 
@@ -930,7 +930,7 @@ def ensure_prereqs(state: State | None = None, console=None, cloudflared_bin: st
 def check_compose() -> CheckResult:
     if not _command_exists("docker"):
         if platform.system() == "Darwin":
-            return CheckResult("compose", "fail", True, "Docker is missing; run `rakkib auth`.")
+            return CheckResult("compose", "fail", True, "Docker is missing; run `rakkib setup`.")
         return CheckResult("compose", "fail", True, "docker command is missing")
     result = docker_run(["compose", "version"], check=False)
     if result.returncode == 0 and result.stdout.strip():
@@ -948,7 +948,7 @@ def check_cloudflared_binary() -> CheckResult:
         "cloudflared_cli",
         "warn",
         False,
-        "Cloudflare tunnel tool is missing; run `rakkib auth` or retry setup",
+        "Cloudflare tunnel tool is missing; run `rakkib setup`",
     )
 
 
@@ -1227,7 +1227,7 @@ def attempt_fix_docker() -> str:
         _ensure_macos_tool_path()
         brew = _macos_brew_cmd()
         if brew is None:
-            return "Homebrew is required. Rerun install.sh, then run `rakkib auth`."
+            return "Homebrew is required. Rerun install.sh, then run `rakkib setup`."
         result = subprocess.run([brew, "install", *MACOS_DOCKER_PACKAGES], capture_output=True, text=True)
         if result.returncode != 0:
             detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
@@ -1278,7 +1278,7 @@ def attempt_fix_compose() -> str:
         _ensure_macos_tool_path()
         brew = _macos_brew_cmd()
         if brew is None:
-            return "Homebrew is required. Rerun install.sh, then run `rakkib auth`."
+            return "Homebrew is required. Rerun install.sh, then run `rakkib setup`."
         result = subprocess.run([brew, "install", "docker-compose"], capture_output=True, text=True)
         if result.returncode != 0:
             detail = result.stderr.strip() or result.stdout.strip() or "unknown error"

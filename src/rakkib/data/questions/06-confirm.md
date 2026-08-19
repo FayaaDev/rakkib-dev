@@ -7,6 +7,7 @@
 ```yaml
 schema_version: 1
 phase: 6
+stage: confirm
 reads_state:
   - platform
   - arch

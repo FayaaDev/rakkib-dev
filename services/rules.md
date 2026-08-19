@@ -82,7 +82,7 @@ Services must not remain deployed on the test server after a successful validati
 - `rakkib remove <service> --yes` is the non-interactive removal path and must update state so later pulls do not re-add the service.
 - `rakkib restart <service>` must work when a service declares restart hooks or render-sensitive artifacts.
 - `rakkib web --lan` exposes the setup UI on the LAN with a tokenized URL; do not assume web setup means public Cloudflare exposure.
-- `rakkib auth` is the current sudo/Docker access validation command. Do not document a sudo subcommand unless it exists.
+- `rakkib setup` is the current sudo/Docker access and identity command. Do not document a sudo subcommand unless it exists.
 
 ## Exposure Modes
 

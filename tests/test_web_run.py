@@ -98,7 +98,7 @@ def test_host_auth_readiness_requires_sudo_when_not_cached(monkeypatch):
 
     assert status.ok is False
     assert status.code == "sudo_required"
-    assert status.command == "rakkib auth"
+    assert status.command == "rakkib setup"
 
 
 def test_host_auth_readiness_flags_docker_group_repair(monkeypatch):
@@ -134,7 +134,7 @@ def test_host_auth_readiness_on_mac_points_to_auth_when_docker_missing(monkeypat
 
     assert status.ok is False
     assert status.code == "docker_missing"
-    assert status.command == "rakkib auth"
+    assert status.command == "rakkib setup"
     assert "Docker needs setup" in status.message
 
 
