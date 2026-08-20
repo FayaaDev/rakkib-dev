@@ -56,13 +56,23 @@ class TestServicePublishing:
         svc = {"id": "transfer", "subdomain_key": "transfer", "default_subdomain": "transfer"}
 
         with (
-            patch("rakkib.steps.cloudflare.create_dns_route"),
-            patch("rakkib.steps.cloudflare.render_config"),
-            patch("rakkib.steps.cloudflare.reload_container"),
+            patch("rakkib.steps.cloudflare.create_dns_route") as mock_create_dns_route,
+            patch("rakkib.steps.cloudflare.render_config") as mock_render_config,
+            patch("rakkib.steps.cloudflare.reload_container") as mock_reload_container,
             patch("rakkib.steps.cloudflare._wait_for_public_route", return_value=False),
         ):
             with pytest.raises(RuntimeError, match="Cloudflare publication failed for transfer.example.com: public route did not become ready"):
                 cloudflare.publish_service(state, svc)
+
+        mock_create_dns_route.assert_not_called()
+        mock_render_config.assert_not_called()
+        mock_reload_container.assert_not_called()
+
+    def test_unpublish_service_keeps_wildcard_route(self, tmp_path):
+        state = _make_state(tmp_path, subdomains={"transfer": "transfer"})
+        svc = {"id": "transfer", "subdomain_key": "transfer", "default_subdomain": "transfer"}
+
+        assert cloudflare.unpublish_service(state, svc) is None
 
     def test_wait_for_public_route_fallback_to_cloudflare_dns(self, monkeypatch):
         svc = {"smoke": {"path": "/", "expected_text": "Dockge"}}
@@ -371,38 +381,6 @@ class TestRun:
             check=False,
         )
 
-    def test_delete_dns_route_uses_cloudflared_delete(self, tmp_path):
-        state = _make_state(
-            tmp_path,
-            cloudflare={
-                "tunnel_uuid": "test-uuid-123",
-                "tunnel_name": "rakkib-example",
-            },
-        )
-
-        with patch("rakkib.steps.cloudflare._cloudflared_bin", return_value="cloudflared"):
-            with patch("rakkib.steps.cloudflare._run") as mock_run:
-                mock_run.return_value.returncode = 0
-                mock_run.return_value.stdout = ""
-                mock_run.return_value.stderr = ""
-
-                warning = cloudflare.delete_dns_route(state, "vault.example.com")
-
-        assert warning is None
-        mock_run.assert_called_once_with(
-            [
-                "cloudflared",
-                "tunnel",
-                "route",
-                "dns",
-                "delete",
-                "test-uuid-123",
-                "vault.example.com",
-            ],
-            env={"HOME": "/home/ubuntu"},
-            check=False,
-        )
-
     def test_run_new_tunnel_creates_and_discovers(self, tmp_path):
         state = _make_state(tmp_path)
         cloudflared_dir = tmp_path / "data" / "cloudflared"
@@ -488,7 +466,12 @@ class TestRun:
         config_path = cloudflared_dir / "config.yml"
         creds_path = cloudflared_dir / "test-uuid.json"
         assert config_path.exists()
-        assert "*.example.com" not in config_path.read_text()
+        config = config_path.read_text()
+        assert 'hostname: "ssh.example.com"' in config
+        assert "hostname: example.com" in config
+        assert 'hostname: "*.example.com"' in config
+        assert config.index('hostname: "ssh.example.com"') < config.index('hostname: "*.example.com"')
+        assert config.index("hostname: example.com") < config.index('hostname: "*.example.com"')
         assert stat.S_IMODE(cloudflared_dir.stat().st_mode) == 0o755
         assert stat.S_IMODE(config_path.stat().st_mode) == 0o644
         assert stat.S_IMODE(creds_path.stat().st_mode) == 0o600
@@ -501,7 +484,7 @@ class TestRun:
         assert f"ADMIN_GID={state.get('admin_gid')}" in env_text
         assert (docker_dir / "docker-compose.yml").exists()
 
-    def test_run_creates_only_explicit_dns_routes(self, tmp_path):
+    def test_run_creates_root_ssh_and_wildcard_dns_routes(self, tmp_path):
         state = _make_state(tmp_path)
         cloudflared_dir = tmp_path / "data" / "cloudflared"
         cloudflared_dir.mkdir(parents=True)
@@ -520,7 +503,7 @@ class TestRun:
         ]
         assert "example.com" in dns_routes
         assert "ssh.example.com" in dns_routes
-        assert "*.example.com" not in dns_routes
+        assert "*.example.com" in dns_routes
 
     def test_run_api_token_verifies_and_sets_env(self, tmp_path):
         state = _make_state(

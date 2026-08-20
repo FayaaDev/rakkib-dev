@@ -20,7 +20,7 @@ from rakkib.doctor import attempt_fix_cloudflared
 from rakkib.render import render_file
 from rakkib.service_catalog import cloudflare_enabled, service_fqdn
 from rakkib.state import State
-from rakkib.steps import VerificationResult, load_service_registry
+from rakkib.steps import VerificationResult
 from rakkib.util import RAKKIB_DATA_DIR
 
 METRICS_RETRY_ATTEMPTS = 20
@@ -343,72 +343,11 @@ def create_dns_route(state: State, fqdn: str, env: dict[str, str] | None = None)
     )
 
 
-def delete_dns_route(state: State, fqdn: str, env: dict[str, str] | None = None) -> str | None:
-    """Delete a Cloudflare tunnel DNS route. Return a warning string on failure."""
-    hostname = str(fqdn or "").strip().strip(".")
-    if not hostname:
-        return None
-
-    tunnel_uuid, tunnel_name = _cloudflare_tunnel_ids(state)
-    tunnel = tunnel_uuid or tunnel_name
-    if not tunnel:
-        return f"Cloudflare DNS record {hostname} may still exist: Cloudflare tunnel is not recorded."
-
-    cloudflared_env = env if env is not None else _cloudflared_env(state.get("admin_user"))
-    commands = [[_cloudflared_bin(), "tunnel", "route", "dns", "delete", str(tunnel), hostname]]
-    if tunnel_name and tunnel_name != tunnel:
-        commands.append([_cloudflared_bin(), "tunnel", "route", "dns", "delete", str(tunnel_name), hostname])
-
-    last_error = "unknown error"
-    for command in commands:
-        result = _run(command, env=cloudflared_env, check=False)
-        if result.returncode == 0:
-            return None
-        last_error = result.stderr.strip() or result.stdout.strip() or last_error
-        lowered = last_error.lower()
-        if "not found" in lowered or "does not exist" in lowered or "doesn't exist" in lowered:
-            return None
-
-    return f"Cloudflare DNS record {hostname} may still exist: {last_error}"
-
-
-def _published_service_ids(state: State) -> list[str]:
-    raw = state.get("cloudflare.published_services") or []
-    if not isinstance(raw, list):
-        return []
-    return [str(item) for item in raw]
-
-
-def _set_published_service_ids(state: State, service_ids: list[str]) -> None:
-    state.set("cloudflare.published_services", sorted(dict.fromkeys(service_ids)))
-
-
-def _service_ingress_lines(state: State) -> str:
-    registry = load_service_registry()
-    by_id = {svc["id"]: svc for svc in registry.get("services", [])}
-    lines: list[str] = []
-    for svc_id in _published_service_ids(state):
-        svc = by_id.get(svc_id)
-        if not svc:
-            continue
-        fqdn = service_fqdn(state, svc)
-        if not fqdn:
-            continue
-        lines.extend(
-            [
-                f"  - hostname: {fqdn}",
-                "    service: http://caddy:80",
-            ]
-        )
-    return "\n".join(lines)
-
-
 def render_config(state: State) -> Path:
-    """Render cloudflared config with explicit service ingress entries."""
+    """Render cloudflared config with wildcard service ingress."""
     data_root = state.data_root
     config_path = data_root / "data" / "cloudflared" / "config.yml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    state.set("cloudflare.service_ingress", _service_ingress_lines(state))
     render_file(_repo_dir() / "templates" / "cloudflared" / "config.yml.tmpl", config_path, state)
     return config_path
 
@@ -526,38 +465,18 @@ def _wait_for_public_route(fqdn: str, svc: dict) -> bool:
 
 
 def publish_service(state: State, svc: dict) -> None:
-    """Publish a successfully deployed service through Cloudflare."""
+    """Verify a successfully deployed service is reachable through Cloudflare."""
     if not cloudflare_enabled(state):
         return
     fqdn = service_fqdn(state, svc)
     if not fqdn:
         return
-    create_dns_route(state, fqdn)
-    published = _published_service_ids(state)
-    if svc["id"] not in published:
-        published.append(svc["id"])
-    _set_published_service_ids(state, published)
-    render_config(state)
-    reload_container(state)
     if not _wait_for_public_route(fqdn, svc):
         raise RuntimeError(f"Cloudflare publication failed for {fqdn}: public route did not become ready")
 
 
 def unpublish_service(state: State, svc: dict, *, warn: bool = True) -> str | None:
-    """Remove Cloudflare DNS and local routing for a service."""
-    if not cloudflare_enabled(state):
-        return None
-    fqdn = service_fqdn(state, svc)
-    published = [svc_id for svc_id in _published_service_ids(state) if svc_id != svc["id"]]
-    _set_published_service_ids(state, published)
-    render_config(state)
-    reload_container(state)
-    if fqdn:
-        warning = delete_dns_route(state, fqdn)
-        if warn and warning:
-            return (
-                f"{warning} Rakkib removed local routing; removed service hostnames should no longer reach the service."
-            )
+    """Keep the wildcard Cloudflare route while Caddy removes the service route."""
     return None
 
 
@@ -1060,9 +979,8 @@ def run(state: State) -> None:
         env=token_env,
     )
 
-    # 17. Create or update only explicit DNS routes. Service hostnames are
-    # added after each service installs successfully.
-    for route in [domain, f"{ssh_subdomain}.{domain}"]:
+    # 17. Create or update the root, SSH, and wildcard service DNS routes.
+    for route in [domain, f"{ssh_subdomain}.{domain}", f"*.{domain}"]:
         create_dns_route(state, route, env=token_env)
 
     # 19. Temporary API token was never persisted; token_env goes out of scope here.

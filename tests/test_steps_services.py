@@ -1387,7 +1387,7 @@ class TestRemoveSingleService:
         mock_hooks.assert_called_once()
         assert mock_hooks.call_args.args[0] == ["openclaw_gateway_uninstall"]
 
-    def test_remove_service_unpublishes_cloudflare_route_with_warning(self, tmp_path):
+    def test_remove_service_keeps_wildcard_cloudflare_route(self, tmp_path):
         data_root = tmp_path / "srv"
         registry = {
             "services": [
@@ -1409,10 +1409,7 @@ class TestRemoveSingleService:
         )
 
         with patch("rakkib.steps.services._load_registry", return_value=registry):
-            with patch(
-                "rakkib.steps.cloudflare.unpublish_service",
-                return_value="Cloudflare DNS record vault.example.com may still exist.",
-            ) as mock_unpublish:
+            with patch("rakkib.steps.cloudflare.unpublish_service") as mock_unpublish:
                 services_step.remove_single_service(state, "vaultwarden")
 
         mock_unpublish.assert_called_once_with(state, registry["services"][0], warn=True)

@@ -10,7 +10,10 @@ ingress:
   - hostname: {{DOMAIN}}
     service: http://caddy:80
 
-{{ CLOUDFLARE_SERVICE_INGRESS | default('') }}
+  # All service subdomains are routed to Caddy. Caddy only proxies hosts
+  # with a rendered service route and returns 404 for all other subdomains.
+  - hostname: "*.{{DOMAIN}}"
+    service: http://caddy:80
 
   # Catch-all 404
   - service: http_status:404

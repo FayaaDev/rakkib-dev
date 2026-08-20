@@ -541,7 +541,6 @@ def _cleanup_previous_hosting_mode(previous_state: State, new_state: State) -> N
     previous_state.set("deployed.exists", False)
     previous_state.set("deployed.foundation_services", [])
     previous_state.set("deployed.selected_services", [])
-    previous_state.set("cloudflare.published_services", [])
     console.print("[green]Previous hosting deployment removed.[/green]")
 
 
