@@ -22,6 +22,8 @@ Rakkib normally manages these locations:
 /srv/data/<service>/           # Persistent service data
 ~/.config/rakkib/              # Rakkib state and answers
 ~/.local/bin/rakkib            # Rakkib command
+srv/apps/source                # Apps building zone
+srv/apps/static                # Apps Serving zone
 ```
 
 Do not assume a specific checkout path, username, hostname, IP address, domain, or timezone. Inspect the current device and Rakkib state first.
